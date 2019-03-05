@@ -25,12 +25,6 @@ export interface UriComponents {
     external?: string;
 }
 
-// some well known URI schemas
-export namespace Schemes {
-    export const File = 'file';
-    export const Untitled = 'untitled';
-}
-
 export function theiaUritoUriComponents(uri: URI): UriComponents {
     return {
         scheme: uri.scheme,

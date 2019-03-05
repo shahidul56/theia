@@ -17,7 +17,7 @@
 import { ResourceResolver, Resource } from '@theia/core';
 import URI from '@theia/core/lib/common/uri';
 import { injectable } from 'inversify';
-import { Schemes } from '../../../common/uri-components';
+import { Schemas } from '../../../common/network';
 import { UriComponents } from '../../../common/uri-components';
 
 const resources = new Map<string, UntitledResource>();
@@ -25,10 +25,10 @@ let index = 0;
 @injectable()
 export class UntitledResourceResolver implements ResourceResolver {
     resolve(uri: URI): Resource | Promise<Resource> {
-        if (uri.scheme === Schemes.Untitled) {
+        if (uri.scheme === Schemas.untitled) {
             return resources.get(uri.toString())!;
         }
-        throw new Error(`scheme ${uri.scheme} is not '${Schemes.Untitled}'`);
+        throw new Error(`scheme ${uri.scheme} is not '${Schemas.untitled}'`);
     }
 }
 
@@ -59,6 +59,6 @@ export function createUntitledResource(content?: string, language?: string): Uri
             }
         }
     }
-    const resource = new UntitledResource(new URI().withScheme(Schemes.Untitled).withPath(`/Untitled-${index++}${extension ? extension : ''}`), content);
+    const resource = new UntitledResource(new URI().withScheme(Schemas.untitled).withPath(`/Untitled-${index++}${extension ? extension : ''}`), content);
     return monaco.Uri.parse(resource.uri.toString());
 }
