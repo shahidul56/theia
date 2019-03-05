@@ -153,16 +153,18 @@ class ProgressNotificationImpl implements ProgressNotification {
     }
 
     show(): void {
-        let container = document.getElementById('notification-container-' + this.properties.id);
+        const containerId = 'notification-container-' + this.properties.id;
+        let container = document.getElementById(containerId);
         if (!container) {
             this.container.appendChild(this.node);
+            container = document.getElementById(containerId);
         }
-        container = document.getElementById('notification-container-' + this.properties.id);
-        if (container) {
+        const progressId = 'notification-progress-' + this.properties.id;
+        if (container && !document.getElementById(progressId)) {
             const progressContainer = container.appendChild(document.createElement('div'));
             progressContainer.className = 'progress';
             const progress = progressContainer.appendChild(document.createElement('p'));
-            progress.id = 'notification-progress-' + this.properties.id;
+            progress.id = progressId;
         }
     }
 
