@@ -14,11 +14,14 @@
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
 
+import { Emitter, Event } from '@theia/core/lib/common';
+
 export const NOTIFICATIONS_CONTAINER = 'theia-NotificationsContainer';
 export const NOTIFICATION = 'theia-Notification';
 export const ICON = 'icon';
 export const TEXT = 'text';
 export const BUTTONS = 'buttons';
+export const PROGRESS = 'progress';
 
 export interface NotificationAction {
     label: string;
@@ -46,6 +49,8 @@ export interface ProgressNotification {
 }
 
 export class Notifications {
+    protected readonly onShowEmitter = new Emitter<string>();
+    readonly onShow: Event<string> = this.onShowEmitter.event;
 
     protected container: Element;
 
@@ -57,10 +62,15 @@ export class Notifications {
     show(properties: NotificationProperties): void {
         const notificationElement = this.createNotificationElement(properties);
         this.container.appendChild(notificationElement);
+        this.onShowEmitter.fire(properties.id);
     }
 
     create(properties: NotificationProperties): ProgressNotification {
-        return new ProgressNotificationImpl(this.container, this.createNotificationElement(properties), properties);
+        return new ProgressNotificationImpl(this.container, this.createNotificationElement(properties), properties, this.onShowEmitter);
+    }
+
+    dispose() {
+        this.onShowEmitter.dispose();
     }
 
     protected createNotificationsContainer(parentContainer: Element): Element {
@@ -81,8 +91,11 @@ export class Notifications {
             'fa',
             this.toIconClass(properties.icon),
         );
-        if (properties.icon === 'progress') {
+        if (properties.icon === PROGRESS) {
             icon.classList.add('fa-pulse');
+            const progressContainer = element.appendChild(document.createElement('div'));
+            progressContainer.classList.add(PROGRESS);
+            progressContainer.appendChild(document.createElement('p')).id = 'notification-progress-' + properties.id;
         }
         icon.classList.add(
             'fa-fw',
@@ -100,11 +113,21 @@ export class Notifications {
         const buttons = element.appendChild(document.createElement('div'));
         buttons.classList.add(BUTTONS);
 
-        const closeTimer = (!!properties.timeout && properties.timeout > 0) ?
-            window.setTimeout(() => {
-                properties.onTimeout();
-                close();
-            }, properties.timeout) : undefined;
+        let closeTimer: number | undefined;
+        if (properties.timeout && properties.timeout > 0) {
+            this.onShow(id => {
+                if (properties.id !== id) {
+                    return;
+                }
+                if (closeTimer) {
+                    window.clearTimeout(closeTimer);
+                }
+                closeTimer = window.setTimeout(() => {
+                    properties.onTimeout();
+                    close();
+                }, properties.timeout);
+            });
+        }
 
         if (!!properties.actions) {
             for (const action of properties.actions) {
@@ -137,11 +160,13 @@ class ProgressNotificationImpl implements ProgressNotification {
     private readonly node: Node;
     private readonly container: Element;
     private readonly properties: NotificationProperties;
+    private readonly onShowEmitter: Emitter<string>;
 
-    constructor(container: Element, node: Node, properties: NotificationProperties) {
+    constructor(container: Element, node: Node, properties: NotificationProperties, onShowEmitter: Emitter<string>) {
         this.node = node;
         this.container = container;
         this.properties = properties;
+        this.onShowEmitter = onShowEmitter;
     }
 
     close(): void {
@@ -153,18 +178,9 @@ class ProgressNotificationImpl implements ProgressNotification {
     }
 
     show(): void {
-        const containerId = 'notification-container-' + this.properties.id;
-        let container = document.getElementById(containerId);
-        if (!container) {
+        if (!document.getElementById(`notification-container-${this.properties.id}`)) {
             this.container.appendChild(this.node);
-            container = document.getElementById(containerId);
-        }
-        const progressId = 'notification-progress-' + this.properties.id;
-        if (container && !document.getElementById(progressId)) {
-            const progressContainer = container.appendChild(document.createElement('div'));
-            progressContainer.className = 'progress';
-            const progress = progressContainer.appendChild(document.createElement('p'));
-            progress.id = progressId;
+            this.onShowEmitter.fire(this.properties.id);
         }
     }
 

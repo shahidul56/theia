@@ -31,6 +31,7 @@ import { StatusBarAlignment } from '@theia/core/lib/browser';
 
 @injectable()
 export class NotificationsMessageClient extends MessageClient {
+    private statusBarProgressQuantity: number = 0;
 
     protected notifications: Notifications = new Notifications();
     @inject(NotificationPreferences) protected preferences: NotificationPreferences;
@@ -55,43 +56,50 @@ export class NotificationsMessageClient extends MessageClient {
         const messageArguments = {
             ...message,
             type: MessageType.Progress,
-            options: {...(message.options || {}), timeout: 10000}
+            options: {...(message.options || {})}
         };
         if (this.activeProgressNotifications.has(progressId)) {
             throw new Error('Cannot show new progress with already existing id.');
         }
+        this.statusBarProgressQuantity++;
         return new Promise(resolve => {
             let progressNotification: ProgressNotification;
 
-            const updateStatusBarEntry = (notifications: Map<string, ProgressNotification> = this.activeProgressNotifications) => {
-                if (!notifications.size) {
-                    this.statusBar.removeElement('status-bar-progress');
+            const updateStatusBarEntry = () => {
+                const elementId = 'status-bar-progress';
+                const activeProgressQuantity = this.activeProgressNotifications.size;
+                if (!activeProgressQuantity) {
+                    this.statusBar.removeElement(elementId);
+                    this.statusBarProgressQuantity = 0;
                     return;
                 }
-                this.statusBar.setElement('status-bar-progress', {
-                    text: '$(spinner~spin)',
-                    tooltip: `In progress(${notifications.size})...`,
+                this.statusBar.setElement(elementId, {
+                    text: `$(spinner~spin) Tasks in Progress: ${activeProgressQuantity}/${this.statusBarProgressQuantity}`,
+                    tooltip: 'Click to show all notifications',
                     alignment: StatusBarAlignment.LEFT,
                     priority: 0,
-                    onclick: () => notifications.forEach(notification => notification.show())
+                    onclick: () => {
+                        this.activeProgressNotifications.forEach(notification => notification.show());
+                    }
                 });
             };
             const notificationProperties = this.getNotificationProperties(progressId, messageArguments, action => {
                 resolve(action);
-                if (!this.activeProgressNotifications.has(progressId)) {
-                    return;
+                if (this.activeProgressNotifications.has(progressId)) {
+                    progressNotification = this.notifications.create(notificationProperties);
+                    this.activeProgressNotifications.set(progressId, progressNotification);
+                    updateStatusBarEntry();
+                    if (!update) {
+                        return;
+                    }
+                    progressNotification.update(update);
                 }
-                progressNotification = this.notifications.create(notificationProperties);
-                this.activeProgressNotifications.set(progressId, progressNotification);
-                updateStatusBarEntry();
-                if (!update) {
-                    return;
-                }
-                progressNotification.update(update);
             });
             progressNotification = this.notifications.create(notificationProperties);
             this.activeProgressNotifications.set(progressId, progressNotification);
-            updateStatusBarEntry();
+            if (this.activeProgressNotifications.size > 1) {
+                updateStatusBarEntry();
+            }
             progressNotification.show();
             if (update) {
                 progressNotification.update(update);
