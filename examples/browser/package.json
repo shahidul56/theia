@@ -52,7 +52,9 @@
     "@theia/typescript": "^0.4.0",
     "@theia/userstorage": "^0.4.0",
     "@theia/variable-resolver": "^0.4.0",
-    "@theia/workspace": "^0.4.0"
+    "@theia/workspace": "^0.4.0",
+    "python-debug": "1.0.0"
+    
   },
   "scripts": {
     "prepare": "yarn run clean && yarn build",
