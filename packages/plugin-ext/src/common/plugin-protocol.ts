@@ -18,10 +18,10 @@ import { RPCProtocol } from '../api/rpc-protocol';
 import { Disposable } from '@theia/core/lib/common/disposable';
 import { LogPart, KeysToAnyValues, KeysToKeysToAnyValue } from './types';
 import { CharacterPair, CommentRule, PluginAPIFactory, Plugin } from '../api/plugin-api';
-// FIXME get rid of browser code in backend
-import { PreferenceSchema, PreferenceSchemaProperties } from '@theia/core/lib/browser/preferences';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { IJSONSchema, IJSONSchemaSnippet } from '@theia/core/lib/common/json-schema';
+import { RecursivePartial } from '@theia/core/lib/common/types';
+import { PreferenceSchema, PreferenceSchemaProperties } from '@theia/core/lib/common/preferences/preference-schema';
 
 export const hostedServicePath = '/services/hostedPlugin';
 
@@ -55,8 +55,8 @@ export interface PluginPackage {
  * This interface describes a package.json contribution section object.
  */
 export interface PluginPackageContribution {
-    configuration?: PreferenceSchema;
-    configurationDefaults?: PreferenceSchemaProperties;
+    configuration?: RecursivePartial<PreferenceSchema>;
+    configurationDefaults?: RecursivePartial<PreferenceSchemaProperties>;
     languages?: PluginPackageLanguageContribution[];
     grammars?: PluginPackageGrammarsContribution[];
     viewsContainers?: { [location: string]: PluginPackageViewContainer[] };
@@ -453,7 +453,7 @@ export interface FoldingRules {
 export interface ViewContainer {
     id: string;
     title: string;
-    icon: string;
+    iconUrl: string;
 }
 
 /**
@@ -621,9 +621,15 @@ export interface ServerPluginRunner {
     onMessage(jsonMessage: any): void;
     setClient(client: HostedPluginClient): void;
     setDefault(defaultRunner: ServerPluginRunner): void;
+    clientClosed(): void;
 
     /**
      * Provides additional metadata.
      */
     getExtraPluginMetadata(): Promise<PluginMetadata[]>;
+}
+
+export const PluginHostEnvironmentVariable = Symbol('PluginHostEnvironmentVariable');
+export interface PluginHostEnvironmentVariable {
+    process(env: NodeJS.ProcessEnv): void;
 }

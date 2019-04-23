@@ -97,7 +97,8 @@ import {
     ColorInformation,
     ColorPresentation,
     OperatingSystem,
-    WebviewPanelTargetArea
+    WebviewPanelTargetArea,
+    FileSystemError
 } from './types-impl';
 import { SymbolKind } from '../api/model';
 import { EditorsAndDocumentsExtImpl } from './editors-and-documents';
@@ -121,6 +122,7 @@ import { ConnectionExtImpl } from './connection-ext';
 import { WebviewsExtImpl } from './webviews';
 import { TasksExtImpl } from './tasks/tasks';
 import { DebugExtImpl } from './node/debug/debug';
+import { FileSystemExtImpl } from './file-system';
 
 export function createAPIFactory(
     rpc: RPCProtocol,
@@ -129,13 +131,13 @@ export function createAPIFactory(
     debugExt: DebugExtImpl,
     preferenceRegistryExt: PreferenceRegistryExtImpl,
     editorsAndDocumentsExt: EditorsAndDocumentsExtImpl,
-    workspaceExt: WorkspaceExtImpl
+    workspaceExt: WorkspaceExtImpl,
+    messageRegistryExt: MessageRegistryExt
 ): PluginAPIFactory {
 
     const commandRegistry = rpc.set(MAIN_RPC_CONTEXT.COMMAND_REGISTRY_EXT, new CommandRegistryImpl(rpc));
     const quickOpenExt = rpc.set(MAIN_RPC_CONTEXT.QUICK_OPEN_EXT, new QuickOpenExtImpl(rpc));
     const dialogsExt = new DialogsExtImpl(rpc);
-    const messageRegistryExt = new MessageRegistryExt(rpc);
     const windowStateExt = rpc.set(MAIN_RPC_CONTEXT.WINDOW_STATE_EXT, new WindowStateExtImpl());
     const notificationExt = rpc.set(MAIN_RPC_CONTEXT.NOTIFICATION_EXT, new NotificationExtImpl(rpc));
     const statusBarExt = new StatusBarExtImpl(rpc);
@@ -150,6 +152,7 @@ export function createAPIFactory(
     const tasksExt = rpc.set(MAIN_RPC_CONTEXT.TASKS_EXT, new TasksExtImpl(rpc));
     const connectionExt = rpc.set(MAIN_RPC_CONTEXT.CONNECTION_EXT, new ConnectionExtImpl(rpc));
     const languagesContributionExt = rpc.set(MAIN_RPC_CONTEXT.LANGUAGES_CONTRIBUTION_EXT, new LanguagesContributionExtImpl(rpc, connectionExt));
+    const fileSystemExt = rpc.set(MAIN_RPC_CONTEXT.FILE_SYSTEM_EXT, new FileSystemExtImpl(rpc));
     rpc.set(MAIN_RPC_CONTEXT.DEBUG_EXT, debugExt);
 
     return function (plugin: InternalPlugin): typeof theia {
@@ -393,7 +396,7 @@ export function createAPIFactory(
                     uri = await documents.createDocumentData(options);
 
                 } else {
-                    return Promise.reject('illegal argument - uriOrFileNameOrOptions');
+                    return Promise.reject(new Error('illegal argument - uriOrFileNameOrOptions'));
                 }
 
                 const data = await documents.openDocument(uri);
@@ -408,15 +411,17 @@ export function createAPIFactory(
             findFiles(include: theia.GlobPattern, exclude?: theia.GlobPattern | null, maxResults?: number, token?: CancellationToken): PromiseLike<Uri[]> {
                 return workspaceExt.findFiles(include, exclude, maxResults, token);
             },
+            saveAll(includeUntitled?: boolean): PromiseLike<boolean> {
+                return editors.saveAll(includeUntitled);
+            },
             applyEdit(edit: theia.WorkspaceEdit): PromiseLike<boolean> {
                 return editors.applyWorkspaceEdit(edit);
             },
             registerTextDocumentContentProvider(scheme: string, provider: theia.TextDocumentContentProvider): theia.Disposable {
                 return workspaceExt.registerTextDocumentContentProvider(scheme, provider);
             },
-            registerFileSystemProvider(scheme: string, provider: theia.FileSystemProvider, options?: { isCaseSensitive?: boolean, isReadonly?: boolean }): theia.Disposable {
-                // FIXME: to implement
-                return new Disposable(() => { });
+            registerFileSystemProvider(scheme: string, provider: theia.FileSystemProvider): theia.Disposable {
+                return fileSystemExt.registerFileSystemProvider(scheme, provider);
             },
             getWorkspaceFolder(uri: theia.Uri): theia.WorkspaceFolder | undefined {
                 return workspaceExt.getWorkspaceFolder(uri);
@@ -424,15 +429,18 @@ export function createAPIFactory(
             asRelativePath(pathOrUri: theia.Uri | string, includeWorkspace?: boolean): string | undefined {
                 return workspaceExt.getRelativePath(pathOrUri, includeWorkspace);
             },
+            updateWorkspaceFolders: (index, deleteCount, ...workspaceFoldersToAdd) =>
+                workspaceExt.updateWorkspaceFolders(index, deleteCount || 0, ...workspaceFoldersToAdd)
+            ,
             registerTaskProvider(type: string, provider: theia.TaskProvider): theia.Disposable {
                 return tasks.registerTaskProvider(type, provider);
             },
             // Experimental API https://github.com/theia-ide/theia/issues/4167
             onDidRenameFile(listener, thisArg?, disposables?): theia.Disposable {
-                return new Disposable(() => { });
+                return workspaceExt.onDidRenameFile(listener, thisArg, disposables);
             },
             onWillRenameFile(listener, thisArg?, disposables?): theia.Disposable {
-                return new Disposable(() => { });
+                return workspaceExt.onWillRenameFile(listener, thisArg, disposables);
             }
         };
 
@@ -705,7 +713,8 @@ export function createAPIFactory(
             FoldingRange,
             FoldingRangeKind,
             OperatingSystem,
-            WebviewPanelTargetArea
+            WebviewPanelTargetArea,
+            FileSystemError
         };
     };
 }

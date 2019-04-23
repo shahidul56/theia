@@ -30,6 +30,7 @@ import { NavigatorKeybindingContexts } from './navigator-keybinding-context';
 import { FileNavigatorFilter } from './navigator-filter';
 import { WorkspaceNode } from './navigator-tree';
 import { NavigatorContextKeyService } from './navigator-context-key-service';
+import { TabBarToolbarContribution, TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 
 export namespace FileNavigatorCommands {
     export const REVEAL_IN_NAVIGATOR: Command = {
@@ -41,7 +42,8 @@ export namespace FileNavigatorCommands {
         label: 'Toggle Hidden Files'
     };
     export const COLLAPSE_ALL: Command = {
-        id: 'navigator.collapse.all'
+        id: 'navigator.collapse.all',
+        iconClass: 'collapse-all'
     };
 }
 
@@ -77,7 +79,7 @@ export namespace NavigatorContextMenu {
 }
 
 @injectable()
-export class FileNavigatorContribution extends AbstractViewContribution<FileNavigatorWidget> implements FrontendApplicationContribution {
+export class FileNavigatorContribution extends AbstractViewContribution<FileNavigatorWidget> implements FrontendApplicationContribution, TabBarToolbarContribution {
 
     @inject(NavigatorContextKeyService)
     protected readonly contextKeyService: NavigatorContextKeyService;
@@ -91,7 +93,7 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
     ) {
         super({
             widgetId: FILE_NAVIGATOR_ID,
-            widgetName: 'Files',
+            widgetName: 'Explorer',
             defaultWidgetOptions: {
                 area: 'left',
                 rank: 100
@@ -113,7 +115,6 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
         };
         updateFocusContextKeys();
         this.shell.activeChanged.connect(updateFocusContextKeys);
-
     }
 
     async initializeLayout(app: FrontendApplication): Promise<void> {
@@ -135,10 +136,17 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
             isVisible: () => true
         });
         registry.registerCommand(FileNavigatorCommands.COLLAPSE_ALL, {
-            execute: () => this.collapseFileNavigatorTree(),
-            isEnabled: () => this.workspaceService.opened,
-            isVisible: () => this.workspaceService.opened
+            execute: widget => this.withWidget(widget, () => this.collapseFileNavigatorTree()),
+            isEnabled: widget => this.withWidget(widget, () => this.workspaceService.opened),
+            isVisible: wodget => this.withWidget(wodget, () => this.workspaceService.opened)
         });
+    }
+
+    protected withWidget<T>(widget: Widget | undefined = this.tryGetWidget(), cb: (navigator: FileNavigatorWidget) => T): T | false {
+        if (widget instanceof FileNavigatorWidget && widget.id === FILE_NAVIGATOR_ID) {
+            return cb(widget);
+        }
+        return false;
     }
 
     registerMenus(registry: MenuModelRegistry): void {
@@ -184,10 +192,15 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
         registry.registerMenuAction(NavigatorContextMenu.MODIFICATION, {
             commandId: WorkspaceCommands.FILE_DUPLICATE.id
         });
-        registry.registerMenuAction(NavigatorContextMenu.MODIFICATION, {
+
+        const downloadUploadMenu = [...NAVIGATOR_CONTEXT_MENU, '6_downloadupload'];
+        registry.registerMenuAction(downloadUploadMenu, {
+            commandId: FileDownloadCommands.UPLOAD.id,
+            order: 'a'
+        });
+        registry.registerMenuAction(downloadUploadMenu, {
             commandId: FileDownloadCommands.DOWNLOAD.id,
-            label: 'Download',
-            order: 'z1' // Should be the last item in the "move" menu group.
+            order: 'b'
         });
 
         registry.registerMenuAction(NavigatorContextMenu.NAVIGATION, {
@@ -251,6 +264,15 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
             command: FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id,
             keybinding: 'ctrlcmd+i',
             context: NavigatorKeybindingContexts.navigatorActive
+        });
+    }
+
+    async registerToolbarItems(toolbarRegistry: TabBarToolbarRegistry): Promise<void> {
+        toolbarRegistry.registerItem({
+            id: FileNavigatorCommands.COLLAPSE_ALL.id,
+            command: FileNavigatorCommands.COLLAPSE_ALL.id,
+            tooltip: 'Collapse All',
+            priority: 0,
         });
     }
 

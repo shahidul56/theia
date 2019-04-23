@@ -1,8 +1,9 @@
+> [Submit a session proposal](https://docs.google.com/forms/d/1EpFRHG1duzmQ4I9TbB6hSzYpSBq03FXt3EOKBzmwXwA/edit) for Theia Developer Conference June 2019 in Stockholm, Sweden ([learn more](https://github.com/theia-ide/theia/wiki/Theia-Developer-Conference-2019))
 
 <br/>
 <div id="theia-logo" align="center">
     <br />
-    <img src="./logo/theia-logo.svg" alt="Theia Logo" width="300"/>
+    <img src="https://raw.githubusercontent.com/theia-ide/theia/master/logo/theia-logo.svg?sanitize=true" alt="Theia Logo" width="300"/>
     <h3>Cloud & Desktop IDE Platform</h3>
 </div>
 
@@ -22,7 +23,7 @@
 
 <div style='margin:0 auto;width:80%;'>
 
-![Theia](/doc/images/theia-screenshot.png)
+![Theia](https://raw.githubusercontent.com/theia-ide/theia/master/doc/images/theia-screenshot.png)
 
 </div>
 
@@ -52,6 +53,7 @@ Here you can find guides and examples for common scenarios:
 - [Develop a Theia application - your own IDE](https://www.theia-ide.org/doc/Composing_Applications.html)
 - [Develop a Theia plugin - a VS Code like extension](https://www.theia-ide.org/doc/Authoring_Plugins.html)
 - [Develop a Theia extension](http://www.theia-ide.org/doc/Authoring_Extensions.html)
+- [Test a VS Code extension in Theia](https://github.com/theia-ide/theia/wiki/Testing-VS-Code-extensions)
 - [Package a desktop Theia application with Electron](https://github.com/theia-ide/yangster-electron)
 
 ## Contributing
@@ -78,9 +80,9 @@ Read below how to engage with Theia community:
  - __Debugging__
 
    A visual debugger leveraging the Debug Server Protocol defined by the VS Code team.
-   
+
  - __Plug-in System__
- 
+
    A plug-in system supporting VS Code extensions.
 
  - __Workbench Improvements__
@@ -92,7 +94,7 @@ Read below how to engage with Theia community:
    Integration with testing frameworks, based on a Test Adapter Protocol.
 
  - __Robustness and Improved UX__
- 
+
    We will further work on simplifying Theia and its UI / UX, improve the performance and keep working on bug reports that are rolling in.
 
  - __More__

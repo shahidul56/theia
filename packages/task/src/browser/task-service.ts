@@ -15,12 +15,13 @@
  ********************************************************************************/
 
 import { inject, injectable, named, postConstruct } from 'inversify';
+import { EditorManager } from '@theia/editor/lib/browser';
 import { ILogger } from '@theia/core/lib/common';
-import { FrontendApplication, ApplicationShell } from '@theia/core/lib/browser';
+import { ApplicationShell, FrontendApplication, WidgetManager } from '@theia/core/lib/browser';
 import { TaskResolverRegistry, TaskProviderRegistry } from './task-contribution';
 import { TERMINAL_WIDGET_FACTORY_ID, TerminalWidgetFactoryOptions } from '@theia/terminal/lib/browser/terminal-widget-impl';
+import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
-import { WidgetManager } from '@theia/core/lib/browser/widget-manager';
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { TaskServer, TaskExitedEvent, TaskInfo, TaskConfiguration } from '../common/task-protocol';
 import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
@@ -28,6 +29,7 @@ import { VariableResolverService } from '@theia/variable-resolver/lib/browser';
 import { TaskWatcher } from '../common/task-watcher';
 import { TaskConfigurationClient, TaskConfigurations } from './task-configurations';
 import { ProvidedTaskConfigurations } from './provided-task-configurations';
+import { Range } from 'vscode-languageserver-types';
 import URI from '@theia/core/lib/common/uri';
 
 @injectable()
@@ -42,6 +44,7 @@ export class TaskService implements TaskConfigurationClient {
      * The last executed task.
      */
     protected lastTask: { source: string, taskLabel: string } | undefined = undefined;
+    protected cachedRecentTasks: TaskConfiguration[] = [];
 
     @inject(FrontendApplication)
     protected readonly app: FrontendApplication;
@@ -78,6 +81,12 @@ export class TaskService implements TaskConfigurationClient {
 
     @inject(TaskResolverRegistry)
     protected readonly taskResolverRegistry: TaskResolverRegistry;
+
+    @inject(TerminalService)
+    protected readonly terminalService: TerminalService;
+
+    @inject(EditorManager)
+    protected readonly editorManager: EditorManager;
 
     /**
      * @deprecated To be removed in 0.5.0
@@ -144,11 +153,38 @@ export class TaskService implements TaskConfigurationClient {
         return this.providedTaskConfigurations.getTasks();
     }
 
+    addRecentTasks(tasks: TaskConfiguration | TaskConfiguration[]): void {
+        if (Array.isArray(tasks)) {
+            tasks.forEach(task => this.addRecentTasks(task));
+        } else {
+            const ind = this.cachedRecentTasks.findIndex(recent => TaskConfiguration.equals(recent, tasks));
+            if (ind >= 0) {
+                this.cachedRecentTasks.splice(ind, 1);
+            }
+            this.cachedRecentTasks.unshift(tasks);
+        }
+    }
+
+    get recentTasks(): TaskConfiguration[] {
+        return this.cachedRecentTasks;
+    }
+
+    set recentTasks(recent: TaskConfiguration[]) {
+        this.cachedRecentTasks = recent;
+    }
+
+    /**
+     * Clears the list of recently used tasks.
+     */
+    clearRecentTasks(): void {
+        this.cachedRecentTasks = [];
+    }
+
     /**
      * Returns a task configuration provided by an extension by task source and label.
      * If there are no task configuration, returns undefined.
      */
-    getProvidedTask(source: string, label: string): TaskConfiguration | undefined {
+    async getProvidedTask(source: string, label: string): Promise<TaskConfiguration | undefined> {
         return this.providedTaskConfigurations.getTask(source, label);
     }
 
@@ -181,7 +217,8 @@ export class TaskService implements TaskConfigurationClient {
             this.logger.error(`Can't get task launch configuration for label: ${taskLabel}`);
             return;
         }
-        this.run(task._source, task.label);
+
+        this.runTask(task);
     }
 
     /**
@@ -200,7 +237,7 @@ export class TaskService implements TaskConfigurationClient {
      * It looks for configured and provided tasks.
      */
     async run(source: string, taskLabel: string): Promise<void> {
-        let task = this.getProvidedTask(source, taskLabel);
+        let task = await this.getProvidedTask(source, taskLabel);
         if (!task) {
             task = this.taskConfigurations.getTask(source, taskLabel);
             if (!task) {
@@ -209,10 +246,18 @@ export class TaskService implements TaskConfigurationClient {
             }
         }
 
+        this.runTask(task);
+    }
+
+    async runTask(task: TaskConfiguration): Promise<void> {
+        const source = task._source;
+        const taskLabel = task.label;
+
         const resolver = this.taskResolverRegistry.getResolver(task.type);
         let resolvedTask: TaskConfiguration;
         try {
             resolvedTask = resolver ? await resolver.resolveTask(task) : task;
+            this.addRecentTasks(task);
         } catch (error) {
             this.logger.error(`Error resolving task '${taskLabel}': ${error}`);
             this.messageService.error(`Error resolving task '${taskLabel}': ${error}`);
@@ -238,6 +283,30 @@ export class TaskService implements TaskConfigurationClient {
         }
     }
 
+    /**
+     * Run selected text in the last active terminal.
+     */
+    async runSelectedText(): Promise<void> {
+        if (!this.editorManager.currentEditor) { return; }
+        const startLine = this.editorManager.currentEditor.editor.selection.start.line;
+        const startCharacter = this.editorManager.currentEditor.editor.selection.start.character;
+        const endLine = this.editorManager.currentEditor.editor.selection.end.line;
+        const endCharacter = this.editorManager.currentEditor.editor.selection.end.character;
+        let selectedRange: Range = Range.create(startLine, startCharacter, endLine, endCharacter);
+        // if no text is selected, default to selecting entire line
+        if (startLine === endLine && startCharacter === endCharacter) {
+            selectedRange = Range.create(startLine, 0, endLine + 1, 0);
+        }
+        const selectedText: string = this.editorManager.currentEditor.editor.document.getText(selectedRange).trimRight() + '\n';
+        let terminal = this.terminalService.currentTerminal;
+        if (!terminal) {
+            terminal = <TerminalWidget>await this.terminalService.newTerminal(<TerminalWidgetFactoryOptions>{ created: new Date().toString() });
+            await terminal.start();
+            this.terminalService.activateTerminal(terminal);
+        }
+        terminal.sendText(selectedText);
+    }
+
     async attach(terminalId: number, taskId: number): Promise<void> {
         // create terminal widget to display an execution output of a Task that was launched as a command inside a shell
         const widget = <TerminalWidget>await this.widgetManager.getOrCreateWidget(
@@ -253,6 +322,10 @@ export class TaskService implements TaskConfigurationClient {
         this.shell.addWidget(widget, { area: 'bottom' });
         this.shell.activateWidget(widget.id);
         widget.start(terminalId);
+    }
+
+    async configure(task: TaskConfiguration): Promise<void> {
+        await this.taskConfigurations.configure(task);
     }
 
     protected isEventForThisClient(context: string | undefined): boolean {

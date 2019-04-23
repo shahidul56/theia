@@ -200,6 +200,7 @@ export interface FileSystemClient {
 
     onDidMove(sourceUri: string, targetUri: string): void;
 
+    onWillMove(sourceUri: string, targetUri: string): void;
 }
 
 @injectable()
@@ -215,6 +216,10 @@ export class DispatchingFileSystemClient implements FileSystemClient {
 
     onDidMove(sourceUri: string, targetUri: string): void {
         this.clients.forEach(client => client.onDidMove(sourceUri, targetUri));
+    }
+
+    onWillMove(sourceUri: string, targetUri: string): void {
+        this.clients.forEach(client => client.onWillMove(sourceUri, targetUri));
     }
 
 }
@@ -253,10 +258,8 @@ export interface FileStat {
 }
 
 export namespace FileStat {
-    export function is(candidate: object): candidate is FileStat {
-        return candidate.hasOwnProperty('uri')
-            && candidate.hasOwnProperty('lastModification')
-            && candidate.hasOwnProperty('isDirectory');
+    export function is(candidate: Object | undefined): candidate is FileStat {
+        return typeof candidate === 'object' && ('uri' in candidate) && ('lastModification' in candidate) && ('isDirectory' in candidate);
     }
 
     export function equals(one: object | undefined, other: object | undefined): boolean {

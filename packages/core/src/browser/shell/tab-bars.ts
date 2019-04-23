@@ -305,6 +305,7 @@ export class ToolbarAwareTabBar extends ScrollableTabBar {
 
         super(options);
         this.rewireDOM();
+        this.tabBarToolbarRegistry.onDidChange(() => this.update());
     }
 
     /**
@@ -336,9 +337,6 @@ export class ToolbarAwareTabBar extends ScrollableTabBar {
     }
 
     protected onBeforeDetach(msg: Message): void {
-        if (this.contentContainer) {
-            this.node.removeChild(this.contentContainer);
-        }
         if (this.toolbar && this.toolbar.isAttached) {
             Widget.detach(this.toolbar);
         }
@@ -363,7 +361,7 @@ export class ToolbarAwareTabBar extends ScrollableTabBar {
     /**
      * Restructures the DOM defined in PhosphorJS.
      *
-     * By default the tabs (`li`) are contained in the `this.contentNode` (`lu`) which is wrapped in a `div` (`this.node`).
+     * By default the tabs (`li`) are contained in the `this.contentNode` (`ul`) which is wrapped in a `div` (`this.node`).
      * Instead of this structure, we add a container for the `this.contentNode` and for the toolbar.
      * The scrollbar will only work for the `ul` part but it does not affect the toolbar, so it can be on the right hand-side.
      */

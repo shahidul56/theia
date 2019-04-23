@@ -14,15 +14,15 @@
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
 
-import * as readline from 'readline';
 import * as fuzzy from 'fuzzy';
-import { injectable, inject } from 'inversify';
-import { FileSearchService } from '../common/file-search-service';
-import { RawProcessFactory } from '@theia/process/lib/node';
+import * as readline from 'readline';
 import { rgPath } from 'vscode-ripgrep';
-import { Deferred } from '@theia/core/lib/common/promise-util';
+import { injectable, inject } from 'inversify';
+import URI from '@theia/core/lib/common/uri';
 import { FileUri } from '@theia/core/lib/node/file-uri';
-import { CancellationToken, ILogger } from '@theia/core';
+import { CancellationTokenSource, CancellationToken, ILogger } from '@theia/core';
+import { RawProcessFactory } from '@theia/process/lib/node';
+import { FileSearchService } from '../common/file-search-service';
 
 @injectable()
 export class FileSearchServiceImpl implements FileSearchService {
@@ -31,153 +31,123 @@ export class FileSearchServiceImpl implements FileSearchService {
         @inject(ILogger) protected readonly logger: ILogger,
         @inject(RawProcessFactory) protected readonly rawProcessFactory: RawProcessFactory) { }
 
-    async find(searchPattern: string, options: FileSearchService.Options, cancellationToken?: CancellationToken): Promise<string[]> {
-        if (options.defaultIgnorePatterns && options.defaultIgnorePatterns.length === 0) { // default excludes
-            options.defaultIgnorePatterns.push('.git');
+    async find(searchPattern: string, options: FileSearchService.Options, clientToken?: CancellationToken): Promise<string[]> {
+        const cancellationSource = new CancellationTokenSource();
+        if (clientToken) {
+            clientToken.onCancellationRequested(() => cancellationSource.cancel());
         }
+        const token = cancellationSource.token;
         const opts = {
             fuzzyMatch: true,
             limit: Number.MAX_SAFE_INTEGER,
             useGitIgnore: true,
             ...options
         };
-        const args: string[] = this.getSearchArgs(opts);
 
-        const resultDeferred = new Deferred<string[]>();
-        try {
-            const results = await Promise.all([
-                this.doGlobSearch(searchPattern, args.slice(), opts.limit, cancellationToken),
-                this.doStringSearch(searchPattern, args.slice(), opts.limit, opts.fuzzyMatch, cancellationToken)
-            ]);
-            const matches = Array.from(new Set([...results[0], ...results[1].exactMatches])).sort().slice(0, opts.limit);
-            if (matches.length === opts.limit) {
-                resultDeferred.resolve(matches);
-            } else {
-                resultDeferred.resolve([...matches, ...results[1].fuzzyMatches].slice(0, opts.limit));
-            }
-        } catch (e) {
-            resultDeferred.reject(e);
-        }
-        return resultDeferred.promise;
-    }
-
-    private doGlobSearch(globPattern: string, searchArgs: string[], limit: number, cancellationToken?: CancellationToken): Promise<string[]> {
-        const resultDeferred = new Deferred<string[]>();
-        let glob = globPattern;
-        if (!glob.endsWith('*')) {
-            glob = `${glob}*`;
-        }
-        if (!glob.startsWith('*')) {
-            glob = `*${glob}`;
-        }
-        searchArgs.unshift(glob);
-        searchArgs.unshift('--glob');
-        const process = this.rawProcessFactory({
-            command: rgPath,
-            args: searchArgs
-        });
-        this.setupCancellation(() => {
-            this.logger.debug('Search cancelled');
-            process.kill();
-            resultDeferred.resolve([]);
-        }, cancellationToken);
-        const lineReader = readline.createInterface({
-            input: process.output,
-            output: process.input
-        });
-        const result: string[] = [];
-        lineReader.on('line', line => {
-            if (result.length >= limit) {
-                process.kill();
-            } else {
-                const fileUriStr = FileUri.create(line).toString();
-                result.push(fileUriStr);
-            }
-        });
-        process.output.on('close', () => {
-            resultDeferred.resolve(result);
-        });
-        process.onError(e => {
-            resultDeferred.reject(e);
-        });
-        return resultDeferred.promise;
-    }
-
-    private doStringSearch(
-        stringPattern: string, searchArgs: string[], limit: number, allowFuzzySearch: boolean, cancellationToken?: CancellationToken
-    ): Promise<{ exactMatches: string[], fuzzyMatches: string[] }> {
-        const resultDeferred = new Deferred<{ exactMatches: string[], fuzzyMatches: string[] }>();
-        const process = this.rawProcessFactory({
-            command: rgPath,
-            args: searchArgs
-        });
-        this.setupCancellation(() => {
-            this.logger.debug('Search cancelled');
-            process.kill();
-            resultDeferred.resolve({ exactMatches: [], fuzzyMatches: [] });
-        }, cancellationToken);
-        const lineReader = readline.createInterface({
-            input: process.output,
-            output: process.input
-        });
-        const exactMatches: string[] = [];
-        const fuzzyMatches: string[] = [];
-        lineReader.on('line', line => {
-            if (exactMatches.length >= limit) {
-                process.kill();
-            } else {
-                const fileUriStr = FileUri.create(line).toString();
-                if (line.toLocaleLowerCase().indexOf(stringPattern.toLocaleLowerCase()) !== -1) {
-                    exactMatches.push(fileUriStr);
-                } else if (allowFuzzySearch && fuzzy.test(stringPattern, line)) {
-                    fuzzyMatches.push(fileUriStr);
+        const roots: FileSearchService.RootOptions = options.rootOptions || {};
+        if (options.rootUris) {
+            for (const rootUri of options.rootUris) {
+                if (!roots[rootUri]) {
+                    roots[rootUri] = {};
                 }
             }
-        });
-        process.output.on('close', () => {
-            const fuzzyResult = fuzzyMatches.slice(0, limit - exactMatches.length);
-            resultDeferred.resolve({ exactMatches, fuzzyMatches: fuzzyResult });
-        });
-        process.onError(e => {
-            resultDeferred.reject(e);
-        });
-        return resultDeferred.promise;
+        }
+        // tslint:disable-next-line:forin
+        for (const rootUri in roots) {
+            const rootOptions = roots[rootUri];
+            if (opts.includePatterns) {
+                const includePatterns = rootOptions.includePatterns || [];
+                rootOptions.includePatterns = [...includePatterns, ...opts.includePatterns];
+            }
+            if (opts.excludePatterns) {
+                const excludePatterns = rootOptions.excludePatterns || [];
+                rootOptions.excludePatterns = [...excludePatterns, ...opts.excludePatterns];
+            }
+            if (rootOptions.useGitIgnore === undefined) {
+                rootOptions.useGitIgnore = opts.useGitIgnore;
+            }
+        }
+
+        const exactMatches = new Set<string>();
+        const fuzzyMatches = new Set<string>();
+        const stringPattern = searchPattern.toLocaleLowerCase();
+        await Promise.all(Object.keys(roots).map(async root => {
+            try {
+                const rootUri = new URI(root);
+                const rootOptions = roots[root];
+                await this.doFind(rootUri, rootOptions, candidate => {
+                    const fileUri = rootUri.resolve(candidate).toString();
+                    if (exactMatches.has(fileUri) || fuzzyMatches.has(fileUri)) {
+                        return;
+                    }
+                    if (!searchPattern || searchPattern === '*' || candidate.toLocaleLowerCase().indexOf(stringPattern) !== -1) {
+                        exactMatches.add(fileUri);
+                    } else if (opts.fuzzyMatch && fuzzy.test(searchPattern, candidate)) {
+                        fuzzyMatches.add(fileUri);
+                    }
+                    if (exactMatches.size + fuzzyMatches.size === opts.limit) {
+                        cancellationSource.cancel();
+                    }
+                }, token);
+            } catch (e) {
+                console.error('Failed to search:', root, e);
+            }
+        }));
+        if (clientToken && clientToken.isCancellationRequested) {
+            return [];
+        }
+        return [...exactMatches, ...fuzzyMatches];
     }
 
-    private getSearchArgs(options: FileSearchService.Options): string[] {
-        const args: string[] = [
-            '--files'
-        ];
+    private doFind(rootUri: URI, options: FileSearchService.BaseOptions,
+        accept: (fileUri: string) => void, token: CancellationToken): Promise<void> {
+        return new Promise((resolve, reject) => {
+            try {
+                const cwd = FileUri.fsPath(rootUri);
+                const args = this.getSearchArgs(options);
+                // TODO: why not just child_process.spawn, theia process are supposed to be used for user processes like tasks and terminals, not internal
+                const process = this.rawProcessFactory({ command: rgPath, args, options: { cwd } });
+                process.onError(reject);
+                process.output.on('close', resolve);
+                token.onCancellationRequested(() => process.kill());
+
+                const lineReader = readline.createInterface({
+                    input: process.output,
+                    output: process.input
+                });
+                lineReader.on('line', line => {
+                    if (token.isCancellationRequested) {
+                        process.kill();
+                    } else {
+                        accept(line);
+                    }
+                });
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
+    private getSearchArgs(options: FileSearchService.BaseOptions): string[] {
+        const args = ['--files', '--case-sensitive'];
+        if (options.includePatterns) {
+            for (const includePattern of options.includePatterns) {
+                if (includePattern) {
+                    args.push('--glob', includePattern);
+                }
+            }
+        }
+        if (options.excludePatterns) {
+            for (const excludePattern of options.excludePatterns) {
+                if (excludePattern) {
+                    args.push('--glob', `!${excludePattern}`);
+                }
+            }
+        }
         if (!options.useGitIgnore) {
             args.push('-uu');
         }
-        if (options && options.defaultIgnorePatterns) {
-            options.defaultIgnorePatterns.filter(p => p !== '')
-                .forEach(ignore => {
-                    if (!ignore.endsWith('*')) {
-                        ignore = `${ignore}*`;
-                    }
-                    if (!ignore.startsWith('*')) {
-                        ignore = `!*${ignore}`;
-                    } else {
-                        ignore = `!${ignore}`;
-                    }
-                    args.push('--glob');
-                    args.push(ignore);
-                });
-        }
-        args.push(...options.rootUris.map(r => FileUri.fsPath(r)));
         return args;
-    }
-
-    private setupCancellation(onCancel: () => void, cancellationToken?: CancellationToken) {
-        if (cancellationToken) {
-            if (cancellationToken.isCancellationRequested) {
-                onCancel();
-            } else {
-                cancellationToken.onCancellationRequested(onCancel);
-            }
-        }
     }
 
 }

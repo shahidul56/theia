@@ -104,6 +104,11 @@ export class SaveFileDialogProps extends FileDialogProps {
      */
     saveLabel?: string;
 
+    /**
+     * A human-readable value for the input.
+     */
+    inputValue?: string;
+
 }
 
 export abstract class FileDialog<T> extends AbstractDialog<T> {
@@ -261,9 +266,12 @@ export class OpenFileDialog extends FileDialog<MaybeArray<FileStatNode>> {
         }
     }
 
-    protected accept(): void {
-        if (this.props.canSelectFolders === false && !Array.isArray(this.value)) {
-            this.widget.model.openNode(this.value);
+    protected async accept(): Promise<void> {
+        const selection = this.value;
+        if (!this.props.canSelectFolders
+            && !Array.isArray(selection)
+            && selection.fileStat.isDirectory) {
+            this.widget.model.openNode(selection);
             return;
         }
         super.accept();
@@ -340,6 +348,7 @@ export class SaveFileDialog extends FileDialog<URI | undefined> {
         this.fileNameField = document.createElement('input');
         this.fileNameField.type = 'text';
         this.fileNameField.classList.add(FILENAME_TEXTFIELD_CLASS);
+        this.fileNameField.value = this.props.inputValue || '';
         fileNamePanel.appendChild(this.fileNameField);
 
         this.fileNameField.onkeyup = () => this.validate();

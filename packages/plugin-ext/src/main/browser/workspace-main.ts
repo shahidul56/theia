@@ -32,6 +32,7 @@ import { FileWatcherSubscriberOptions } from '../../api/model';
 import { InPluginFileSystemWatcherManager } from './in-plugin-filesystem-watcher-manager';
 import { StoragePathService } from './storage-path-service';
 import { PluginServer } from '../../common/plugin-protocol';
+import { FileSystemPreferences } from '@theia/filesystem/lib/browser';
 
 export class WorkspaceMainImpl implements WorkspaceMain {
 
@@ -55,6 +56,8 @@ export class WorkspaceMainImpl implements WorkspaceMain {
 
     private storagePathService: StoragePathService;
 
+    private fsPreferences: FileSystemPreferences;
+
     constructor(rpc: RPCProtocol, container: interfaces.Container) {
         this.proxy = rpc.getProxy(MAIN_RPC_CONTEXT.WORKSPACE_EXT);
         this.storageProxy = rpc.getProxy(MAIN_RPC_CONTEXT.STORAGE_EXT);
@@ -64,6 +67,7 @@ export class WorkspaceMainImpl implements WorkspaceMain {
         this.pluginServer = container.get(PluginServer);
         this.workspaceService = container.get(WorkspaceService);
         this.storagePathService = container.get(StoragePathService);
+        this.fsPreferences = container.get(FileSystemPreferences);
 
         this.inPluginFileSystemWatcherManager = new InPluginFileSystemWatcherManager(this.proxy, container);
 
@@ -152,22 +156,39 @@ export class WorkspaceMainImpl implements WorkspaceMain {
         });
     }
 
-    async $startFileSearch(includePattern: string, excludePatternOrDisregardExcludes?: string | false,
-        maxResults?: number, token?: theia.CancellationToken): Promise<UriComponents[]> {
-        const opts: FileSearchService.Options = { rootUris: this.roots.map(r => r.uri) };
+    async $startFileSearch(includePattern: string, includeFolderUri: string | undefined, excludePatternOrDisregardExcludes?: string | false,
+        maxResults?: number): Promise<UriComponents[]> {
+        const roots: FileSearchService.RootOptions = {};
+        const rootUris = includeFolderUri ? [includeFolderUri] : this.roots.map(r => r.uri);
+        for (const rootUri of rootUris) {
+            roots[rootUri] = {};
+        }
+        const opts: FileSearchService.Options = { rootOptions: roots };
+        if (includePattern) {
+            opts.includePatterns = [includePattern];
+        }
         if (typeof excludePatternOrDisregardExcludes === 'string') {
-            if (excludePatternOrDisregardExcludes === '') { // default excludes
-                opts.defaultIgnorePatterns = [];
-            } else {
-                opts.defaultIgnorePatterns = [excludePatternOrDisregardExcludes];
+            opts.excludePatterns = [excludePatternOrDisregardExcludes];
+        }
+        if (excludePatternOrDisregardExcludes !== false) {
+            for (const rootUri of rootUris) {
+                const filesExclude = this.fsPreferences.get('files.exclude', undefined, rootUri);
+                if (filesExclude) {
+                    for (const excludePattern in filesExclude) {
+                        if (filesExclude[excludePattern]) {
+                            const rootOptions = roots[rootUri];
+                            const rootExcludePatterns = rootOptions.excludePatterns || [];
+                            rootExcludePatterns.push(excludePattern);
+                            rootOptions.excludePatterns = rootExcludePatterns;
+                        }
+                    }
+                }
             }
-        } else {
-            opts.defaultIgnorePatterns = undefined; // no excludes
         }
         if (typeof maxResults === 'number') {
             opts.limit = maxResults;
         }
-        const uriStrs = await this.fileSearchService.find(includePattern, opts);
+        const uriStrs = await this.fileSearchService.find('', opts);
         return uriStrs.map(uriStr => Uri.parse(uriStr));
     }
 
@@ -190,6 +211,10 @@ export class WorkspaceMainImpl implements WorkspaceMain {
 
     $onTextDocumentContentChange(uri: string, content: string): void {
         this.resourceResolver.onContentChange(uri, content);
+    }
+
+    async $updateWorkspaceFolders(start: number, deleteCount?: number, ...rootsToAdd: string[]): Promise<void> {
+        await this.workspaceService.spliceRoots(start, deleteCount, ...rootsToAdd.map(root => new URI(root)));
     }
 
 }
@@ -287,7 +312,7 @@ export class TextContentResource implements Resource {
             }
         }
 
-        return Promise.reject(`Unable to get content for '${this.uri.toString()}'`);
+        return Promise.reject(new Error(`Unable to get content for '${this.uri.toString()}'`));
     }
 
     dispose() {

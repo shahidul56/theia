@@ -15,6 +15,7 @@
  ********************************************************************************/
 
 import { expect } from 'chai';
+import * as assert from 'assert';
 import * as path from 'path';
 import { FileSearchServiceImpl } from './file-search-service-impl';
 import { FileUri } from '@theia/core/lib/node';
@@ -22,6 +23,8 @@ import { Container, ContainerModule } from 'inversify';
 import { CancellationTokenSource } from '@theia/core';
 import { bindLogger } from '@theia/core/lib/node/logger-backend-module';
 import processBackendModule from '@theia/process/lib/node/process-backend-module';
+import URI from '@theia/core/lib/common/uri';
+import { FileSearchService } from '../common/file-search-service';
 
 // tslint:disable:no-unused-expression
 
@@ -51,15 +54,14 @@ describe('search-service', function () {
         expect(testFile).to.be.not.undefined;
     });
 
-    it('shall respect nested .gitignore');
-    //     const service = testContainer.get(FileSearchServiceImpl);
-    //     const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources')).toString();
-    //     const matches = await service.find('foo', { rootUri, fuzzyMatch: false });
+    it.skip('shall respect nested .gitignore', async () => {
+        const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources')).toString();
+        const matches = await service.find('foo', { rootUris: [rootUri], fuzzyMatch: false });
 
-    //     expect(matches.find(match => match.endsWith('subdir1/sub-bar/foo.txt'))).to.be.undefined;
-    //     expect(matches.find(match => match.endsWith('subdir1/sub2/foo.txt'))).to.be.not.undefined;
-    //     expect(matches.find(match => match.endsWith('subdir1/foo.txt'))).to.be.not.undefined;
-    // });
+        expect(matches.find(match => match.endsWith('subdir1/sub-bar/foo.txt'))).to.be.undefined;
+        expect(matches.find(match => match.endsWith('subdir1/sub2/foo.txt'))).to.be.not.undefined;
+        expect(matches.find(match => match.endsWith('subdir1/foo.txt'))).to.be.not.undefined;
+    });
 
     it('shall cancel searches', async () => {
         const rootUri = FileUri.create(path.resolve(__dirname, '../../../../..')).toString();
@@ -83,39 +85,105 @@ describe('search-service', function () {
         it('should support file searches with globs', async () => {
             const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources/subdir1/sub2')).toString();
 
-            const matches = await service.find('**/*oo.*', { rootUris: [rootUri] });
+            const matches = await service.find('', { rootUris: [rootUri], includePatterns: ['**/*oo.*'] });
             expect(matches).to.be.not.undefined;
             expect(matches.length).to.eq(1);
         });
 
-        it('should support file searches with globs without the prefixed or trailing star (*)', async () => {
+        it('should NOT support file searches with globs without the prefixed or trailing star (*)', async () => {
             const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources/subdir1/sub2')).toString();
 
-            const trailingMatches = await service.find('*oo', { rootUris: [rootUri] });
+            const trailingMatches = await service.find('', { rootUris: [rootUri], includePatterns: ['*oo'] });
             expect(trailingMatches).to.be.not.undefined;
-            expect(trailingMatches.length).to.eq(1);
+            expect(trailingMatches.length).to.eq(0);
 
-            const prefixedMatches = await service.find('oo*', { rootUris: [rootUri] });
+            const prefixedMatches = await service.find('', { rootUris: [rootUri], includePatterns: ['oo*'] });
             expect(prefixedMatches).to.be.not.undefined;
-            expect(prefixedMatches.length).to.eq(1);
+            expect(prefixedMatches.length).to.eq(0);
         });
     });
 
     describe('search with ignored patterns', () => {
-        it('should ignore strings passed through the search options', async () => {
+        it('should NOT ignore strings passed through the search options', async () => {
             const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources/subdir1/sub2')).toString();
 
-            const matches = await service.find('**/*oo.*', { rootUris: [rootUri], defaultIgnorePatterns: ['foo'] });
+            const matches = await service.find('', { rootUris: [rootUri], includePatterns: ['**/*oo.*'], excludePatterns: ['foo'] });
             expect(matches).to.be.not.undefined;
-            expect(matches.length).to.eq(0);
+            expect(matches.length).to.eq(1);
         });
 
-        it('should ignore globs passed through the search options', async () => {
-            const rootUri = FileUri.create(path.resolve(__dirname, '../../test-resources/subdir1/sub2')).toString();
+        const ignoreGlobsUri = FileUri.create(path.resolve(__dirname, '../../test-resources/subdir1/sub2')).toString();
+        it('should ignore globs passed through the search options #1', () => assertIgnoreGlobs({
+            rootUris: [ignoreGlobsUri],
+            includePatterns: ['**/*oo.*'],
+            excludePatterns: ['*fo*']
+        }));
+        it('should ignore globs passed through the search options #2', () => assertIgnoreGlobs({
+            rootOptions: {
+                [ignoreGlobsUri]: {
+                    includePatterns: ['**/*oo.*'],
+                    excludePatterns: ['*fo*']
+                }
+            }
+        }));
+        it('should ignore globs passed through the search options #3', () => assertIgnoreGlobs({
+            rootOptions: {
+                [ignoreGlobsUri]: {
+                    includePatterns: ['**/*oo.*']
+                }
+            },
+            excludePatterns: ['*fo*']
+        }));
+        it('should ignore globs passed through the search options #4', () => assertIgnoreGlobs({
+            rootOptions: {
+                [ignoreGlobsUri]: {
+                    excludePatterns: ['*fo*']
+                }
+            },
+            includePatterns: ['**/*oo.*']
+        }));
+        it('should ignore globs passed through the search options #5', () => assertIgnoreGlobs({
+            rootOptions: {
+                [ignoreGlobsUri]: {}
+            },
+            excludePatterns: ['*fo*'],
+            includePatterns: ['**/*oo.*']
+        }));
 
-            const matches = await service.find('**/*oo.*', { rootUris: [rootUri], defaultIgnorePatterns: ['*fo*'] });
+        async function assertIgnoreGlobs(options: FileSearchService.Options): Promise<void> {
+            const matches = await service.find('', options);
             expect(matches).to.be.not.undefined;
             expect(matches.length).to.eq(0);
+        }
+    });
+
+    describe('irrelevant absolute results', () => {
+        const rootUri = FileUri.create(path.resolve(__dirname, '../../../..'));
+
+        it('not fuzzy', async () => {
+            const searchPattern = rootUri.path.dir.base;
+            const matches = await service.find(searchPattern, { rootUris: [rootUri.toString()], fuzzyMatch: false, useGitIgnore: true, limit: 200 });
+            for (const match of matches) {
+                const relativUri = rootUri.relative(new URI(match));
+                assert.notEqual(relativUri, undefined);
+                const relativMatch = relativUri!.toString();
+                assert.notEqual(relativMatch.indexOf(searchPattern), -1, relativMatch);
+            }
+        });
+
+        it('fuzzy', async () => {
+            const matches = await service.find('shell', { rootUris: [rootUri.toString()], fuzzyMatch: true, useGitIgnore: true, limit: 200 });
+            for (const match of matches) {
+                const relativUri = rootUri.relative(new URI(match));
+                assert.notEqual(relativUri, undefined);
+                const relativMatch = relativUri!.toString();
+                let position = 0;
+                for (const ch of 'shell') {
+                    position = relativMatch.indexOf(ch, position);
+                    assert.notEqual(position, -1, relativMatch);
+                }
+            }
         });
     });
+
 });

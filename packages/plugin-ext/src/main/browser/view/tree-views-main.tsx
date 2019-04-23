@@ -40,6 +40,7 @@ import { MenuPath } from '@theia/core/lib/common/menu';
 import * as ReactDOM from 'react-dom';
 import * as React from 'react';
 import { ContextKeyService, ContextKey } from '@theia/core/lib/browser/context-key-service';
+import { SelectionService } from '@theia/core/lib/common';
 
 export const TREE_NODE_HYPERLINK = 'theia-TreeNodeHyperlink';
 export const VIEW_ITEM_CONTEXT_MENU: MenuPath = ['view-item-context-menu'];
@@ -104,7 +105,8 @@ export class TreeViewsMainImpl implements TreeViewsMain {
 
     createTreeViewContainer(dataProvider: TreeViewDataProviderMain): Container {
         const child = createTreeContainer(this.container, {
-            contextMenuPath: VIEW_ITEM_CONTEXT_MENU
+            contextMenuPath: VIEW_ITEM_CONTEXT_MENU,
+            globalSelection: true
         });
 
         child.bind(TreeViewDataProviderMain).toConstantValue(dataProvider);
@@ -129,7 +131,7 @@ export class TreeViewsMainImpl implements TreeViewsMain {
                 const treeItemId = event[0].id;
                 const [, contextValue = ''] = treeItemId.split('/');
 
-                this.proxy.$setSelection(treeViewId, treeItemId);
+                this.proxy.$setSelection(treeViewId, treeItemId, treeViewWidget.contextSelection);
                 this.viewItemCtxKey.set(contextValue);
             } else {
                 this.viewItemCtxKey.set('');
@@ -140,10 +142,20 @@ export class TreeViewsMainImpl implements TreeViewsMain {
 
 }
 
-export interface TreeViewFolderNode extends SelectableTreeNode, ExpandableTreeNode, CompositeTreeNode {
+export interface SelectionEventHandler {
+    readonly node: SelectableTreeNode;
+    readonly contextSelection: boolean;
 }
 
-export interface TreeViewFileNode extends SelectableTreeNode {
+export interface DescriptiveMetadata {
+    // tslint:disable-next-line:no-any
+    readonly metadata?: any
+}
+
+export interface TreeViewFolderNode extends SelectableTreeNode, ExpandableTreeNode, CompositeTreeNode, DescriptiveMetadata {
+}
+
+export interface TreeViewFileNode extends SelectableTreeNode, DescriptiveMetadata {
 }
 
 export class TreeViewDataProviderMain {
@@ -166,7 +178,8 @@ export class TreeViewDataProviderMain {
             visible: true,
             selected: false,
             expanded,
-            children: []
+            children: [],
+            metadata: item.metadata
         };
     }
 
@@ -179,6 +192,7 @@ export class TreeViewDataProviderMain {
             parent: undefined,
             visible: true,
             selected: false,
+            metadata: item.metadata
         };
     }
 
@@ -214,12 +228,14 @@ export class TreeViewDataProviderMain {
 @injectable()
 export class TreeViewWidget extends TreeWidget {
 
+    protected _contextSelection = false;
+
     constructor(
         @inject(TreeProps) readonly treeProps: TreeProps,
         @inject(TreeModel) readonly model: TreeModel,
         @inject(ContextMenuRenderer) readonly contextMenuRenderer: ContextMenuRenderer,
-        @inject(TreeViewDataProviderMain) readonly dataProvider: TreeViewDataProviderMain) {
-
+        @inject(TreeViewDataProviderMain) readonly dataProvider: TreeViewDataProviderMain,
+        @inject(SelectionService) readonly selectionService: SelectionService) {
         super(treeProps, model, contextMenuRenderer);
     }
 
@@ -240,6 +256,19 @@ export class TreeViewWidget extends TreeWidget {
 
             this.model.root = node;
         });
+    }
+
+    get contextSelection(): boolean {
+        return this._contextSelection;
+    }
+
+    protected handleContextMenuEvent(node: TreeNode | undefined, event: React.MouseEvent<HTMLElement>): void {
+        try {
+            this._contextSelection = true;
+            super.handleContextMenuEvent(node, event);
+        } finally {
+            this._contextSelection = false;
+        }
     }
 
     public updateWidget() {

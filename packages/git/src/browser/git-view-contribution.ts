@@ -80,12 +80,14 @@ export namespace GIT_COMMANDS {
     export const OPEN_FILE: Command = {
         id: 'git.open.file',
         category: 'Git',
-        label: 'Open File'
+        label: 'Open File',
+        iconClass: 'theia-open-file-icon'
     };
     export const OPEN_CHANGES: Command = {
         id: 'git.open.changes',
         category: 'Git',
-        label: 'Open Changes'
+        label: 'Open Changes',
+        iconClass: 'theia-open-change-icon'
     };
     export const SYNC = {
         id: 'git.sync',
@@ -160,7 +162,7 @@ export class GitViewContribution extends AbstractViewContribution<GitWidget>
             widgetName: 'Git',
             defaultWidgetOptions: {
                 area: 'left',
-                rank: 200
+                rank: 300
             },
             toggleCommandId: 'gitView:toggle',
             toggleKeybinding: 'ctrlcmd+shift+g'
@@ -411,13 +413,11 @@ export class GitViewContribution extends AbstractViewContribution<GitWidget>
         registry.registerItem({
             id: GIT_COMMANDS.OPEN_FILE.id,
             command: GIT_COMMANDS.OPEN_FILE.id,
-            text: '$(file-o)',
             tooltip: GIT_COMMANDS.OPEN_FILE.label
         });
         registry.registerItem({
             id: GIT_COMMANDS.OPEN_CHANGES.id,
             command: GIT_COMMANDS.OPEN_CHANGES.id,
-            text: '$(files-o)',
             tooltip: GIT_COMMANDS.OPEN_CHANGES.label
         });
     }
@@ -502,7 +502,7 @@ export class GitViewContribution extends AbstractViewContribution<GitWidget>
         const { upstreamBranch, aheadBehind } = status;
         if (upstreamBranch) {
             return {
-                text: '$(refresh)' + (aheadBehind ? ` ${aheadBehind.behind} $(arrow-down) ${aheadBehind.ahead} $(arrow-up)` : ''),
+                text: '$(refresh)' + (aheadBehind && (aheadBehind.ahead + aheadBehind.behind) > 0 ? ` ${aheadBehind.behind}↓ ${aheadBehind.ahead}↑` : ''),
                 command: GIT_COMMANDS.SYNC.id,
                 tooltip: 'Synchronize Changes'
             };

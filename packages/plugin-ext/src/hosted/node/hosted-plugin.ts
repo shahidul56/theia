@@ -63,10 +63,11 @@ export class HostedPluginSupport {
         this.isPluginProcessRunning = false;
         this.terminatePluginServer();
         this.isPluginProcessRunning = false;
+        this.pluginRunners.forEach(runner => runner.clientClosed());
     }
 
     runPlugin(plugin: PluginModel): void {
-        if (plugin.entryPoint.backend) {
+        if (!plugin.entryPoint.frontend) {
             this.runPluginServer();
         }
     }

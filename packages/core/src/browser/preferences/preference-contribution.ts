@@ -20,6 +20,13 @@ import { ContributionProvider, bindContributionProvider, escapeRegExpCharacters,
 import { PreferenceScope } from './preference-scope';
 import { PreferenceProvider, PreferenceProviderPriority, PreferenceProviderDataChange } from './preference-provider';
 
+import {
+    PreferenceSchema, PreferenceSchemaProperties, PreferenceDataSchema, PreferenceItem, PreferenceSchemaProperty, PreferenceDataProperty, JsonType
+} from '../../common/preferences/preference-schema';
+import { FrontendApplicationConfigProvider } from '../frontend-application-config-provider';
+import { FrontendApplicationConfig } from '@theia/application-package/lib/application-props';
+export { PreferenceSchema, PreferenceSchemaProperties, PreferenceDataSchema, PreferenceItem, PreferenceSchemaProperty, PreferenceDataProperty, JsonType };
+
 // tslint:disable:no-any
 // tslint:disable:forin
 
@@ -27,73 +34,6 @@ export const PreferenceContribution = Symbol('PreferenceContribution');
 export interface PreferenceContribution {
     readonly schema: PreferenceSchema;
 }
-
-export interface PreferenceSchema {
-    [name: string]: any,
-    scope?: 'application' | 'window' | 'resource' | PreferenceScope,
-    overridable?: boolean;
-    properties: PreferenceSchemaProperties
-}
-export namespace PreferenceSchema {
-    export function getDefaultScope(schema: PreferenceSchema): PreferenceScope {
-        let defaultScope: PreferenceScope = PreferenceScope.Workspace;
-        if (!PreferenceScope.is(schema.scope)) {
-            defaultScope = PreferenceScope.fromString(<string>schema.scope) || PreferenceScope.Workspace;
-        } else {
-            defaultScope = schema.scope;
-        }
-        return defaultScope;
-    }
-}
-
-export interface PreferenceSchemaProperties {
-    [name: string]: PreferenceSchemaProperty
-}
-
-export interface PreferenceDataSchema {
-    [name: string]: any,
-    scope?: PreferenceScope,
-    properties: {
-        [name: string]: PreferenceDataProperty
-    }
-    patternProperties: {
-        [name: string]: PreferenceDataProperty
-    };
-}
-
-export interface PreferenceItem {
-    type?: JsonType | JsonType[];
-    minimum?: number;
-    default?: any;
-    enum?: string[];
-    items?: PreferenceItem;
-    properties?: { [name: string]: PreferenceItem };
-    additionalProperties?: object;
-    [name: string]: any;
-    overridable?: boolean;
-}
-
-export interface PreferenceSchemaProperty extends PreferenceItem {
-    description?: string;
-    scope?: 'application' | 'window' | 'resource' | PreferenceScope;
-}
-
-export interface PreferenceDataProperty extends PreferenceItem {
-    description?: string;
-    scope?: PreferenceScope;
-}
-export namespace PreferenceDataProperty {
-    export function fromPreferenceSchemaProperty(schemaProps: PreferenceSchemaProperty, defaultScope: PreferenceScope = PreferenceScope.Workspace): PreferenceDataProperty {
-        if (!schemaProps.scope) {
-            schemaProps.scope = defaultScope;
-        } else if (typeof schemaProps.scope === 'string') {
-            return Object.assign(schemaProps, { scope: PreferenceScope.fromString(schemaProps.scope) || defaultScope });
-        }
-        return <PreferenceDataProperty>schemaProps;
-    }
-}
-
-export type JsonType = 'string' | 'array' | 'number' | 'integer' | 'object' | 'boolean' | 'null';
 
 export function bindPreferenceSchemaProvider(bind: interfaces.Bind): void {
     bind(PreferenceSchemaProvider).toSelf().inSingletonScope();
@@ -109,6 +49,17 @@ const OVERRIDE_PROPERTY = '\\[(.*)\\]$';
 export const OVERRIDE_PROPERTY_PATTERN = new RegExp(OVERRIDE_PROPERTY);
 
 const OVERRIDE_PATTERN_WITH_SUBSTITUTION = '\\[(${0})\\]$';
+
+export interface FrontendApplicationPreferenceConfig extends FrontendApplicationConfig {
+    preferences: {
+        [preferenceName: string]: any
+    }
+}
+export namespace FrontendApplicationPreferenceConfig {
+    export function is(config: FrontendApplicationConfig): config is FrontendApplicationPreferenceConfig {
+        return 'preferences' in config && typeof config['preferences'] === 'object';
+    }
+}
 
 @injectable()
 export class PreferenceSchemaProvider extends PreferenceProvider {
@@ -196,16 +147,39 @@ export class PreferenceSchemaProvider extends PreferenceProvider {
                 if (schemaProps.overridable) {
                     this.overridePatternProperties.properties[preferenceName] = schemaProps;
                 }
-                const newValue = schemaProps.default = this.getDefaultValue(schemaProps);
                 this.combinedSchema.properties[preferenceName] = schemaProps;
-                this.preferences[preferenceName] = newValue;
-                changes.push({ preferenceName, newValue, scope, domain });
+
+                const value = schemaProps.default = this.getDefaultValue(schemaProps, preferenceName);
+                if (this.testOverrideValue(preferenceName, value)) {
+                    for (const overridenPreferenceName in value) {
+                        const overrideValue = value[overridenPreferenceName];
+                        const overridePreferenceName = `${preferenceName}.${overridenPreferenceName}`;
+                        changes.push(this.doSetPreferenceValue(overridePreferenceName, overrideValue, { scope, domain }));
+                    }
+                } else {
+                    changes.push(this.doSetPreferenceValue(preferenceName, value, { scope, domain }));
+                }
             }
         }
         return changes;
     }
+    protected doSetPreferenceValue(preferenceName: string, newValue: any, { scope, domain }: {
+        scope: PreferenceScope,
+        domain: string[]
+    }): PreferenceProviderDataChange {
+        const oldValue = this.preferences[preferenceName];
+        this.preferences[preferenceName] = newValue;
+        return { preferenceName, oldValue, newValue, scope, domain };
+    }
 
-    protected getDefaultValue(property: PreferenceItem): any {
+    /** @deprecated since 0.6.0 pass preferenceName as the second arg */
+    protected getDefaultValue(property: PreferenceItem): any;
+    protected getDefaultValue(property: PreferenceItem, preferenceName: string): any;
+    protected getDefaultValue(property: PreferenceItem, preferenceName?: string): any {
+        const config = FrontendApplicationConfigProvider.get();
+        if (preferenceName && FrontendApplicationPreferenceConfig.is(config) && preferenceName in config.preferences) {
+            return config.preferences[preferenceName];
+        }
         if (property.default) {
             return property.default;
         }
@@ -305,7 +279,7 @@ export class PreferenceSchemaProvider extends PreferenceProvider {
         return { preferenceName, overrideIdentifier };
     }
 
-    testOverrideValue(name: string, value: any): boolean {
-        return typeof value === 'object' && OVERRIDE_PROPERTY_PATTERN.test(name);
+    testOverrideValue(name: string, value: any): value is PreferenceSchemaProperties {
+        return PreferenceSchemaProperties.is(value) && OVERRIDE_PROPERTY_PATTERN.test(name);
     }
 }

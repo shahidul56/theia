@@ -171,7 +171,7 @@ export class FrontendApplication {
         document.addEventListener('keydown', event => this.keybindings.run(event), true);
         // Prevent forward/back navigation by scrolling in OS X
         if (isOSX) {
-            document.body.addEventListener('wheel', preventNavigation);
+            document.body.addEventListener('wheel', preventNavigation, { passive: false });
         }
     }
 
@@ -296,7 +296,7 @@ export class FrontendApplication {
          * - consider treat commands, keybindings and menus as frontend application contributions
          */
         this.commands.onStart();
-        this.keybindings.onStart();
+        await this.keybindings.onStart();
         this.menus.onStart();
         for (const contribution of this.contributions.getContributions()) {
             if (contribution.onStart) {

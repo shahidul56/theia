@@ -16,11 +16,11 @@
 
 import * as path from 'path';
 import * as cp from 'child_process';
-import { injectable, inject } from 'inversify';
-import { ILogger, ConnectionErrorHandler } from '@theia/core/lib/common';
+import { injectable, inject, named } from 'inversify';
+import { ILogger, ConnectionErrorHandler, ContributionProvider } from '@theia/core/lib/common';
 import { Emitter } from '@theia/core/lib/common/event';
 import { createIpcEnv } from '@theia/core/lib/node/messaging/ipc-protocol';
-import { HostedPluginClient, ServerPluginRunner, PluginMetadata } from '../../common/plugin-protocol';
+import { HostedPluginClient, ServerPluginRunner, PluginMetadata, PluginHostEnvironmentVariable } from '../../common/plugin-protocol';
 import { RPCProtocolImpl } from '../../api/rpc-protocol';
 import { MAIN_RPC_CONTEXT } from '../../api/plugin-api';
 import { HostedPluginCliContribution } from './hosted-plugin-cli-contribution';
@@ -41,6 +41,10 @@ export class HostedPluginProcess implements ServerPluginRunner {
     @inject(HostedPluginCliContribution)
     protected readonly cli: HostedPluginCliContribution;
 
+    @inject(ContributionProvider)
+    @named(PluginHostEnvironmentVariable)
+    protected readonly pluginHostEnvironmentVariables: ContributionProvider<PluginHostEnvironmentVariable>;
+
     private childProcess: cp.ChildProcess | undefined;
     private client: HostedPluginClient;
 
@@ -51,6 +55,10 @@ export class HostedPluginProcess implements ServerPluginRunner {
             }
         }
         this.client = client;
+    }
+
+    public clientClosed(): void {
+
     }
 
     public setDefault(defaultRunner: ServerPluginRunner): void {
@@ -124,6 +132,8 @@ export class HostedPluginProcess implements ServerPluginRunner {
                 delete env[key];
             }
         }
+        // apply external env variables
+        this.pluginHostEnvironmentVariables.getContributions().forEach(envVar => envVar.process(env));
         if (this.cli.extensionTestsPath) {
             env.extensionTestsPath = this.cli.extensionTestsPath;
         }

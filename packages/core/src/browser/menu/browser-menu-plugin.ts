@@ -21,9 +21,10 @@ import {
     CommandRegistry, ActionMenuNode, CompositeMenuNode,
     MenuModelRegistry, MAIN_MENU_BAR, MenuPath, ILogger
 } from '../../common';
-import { KeybindingRegistry, Keybinding } from '../keybinding';
+import { KeybindingRegistry } from '../keybinding';
 import { FrontendApplicationContribution, FrontendApplication } from '../frontend-application';
 import { ContextKeyService } from '../context-key-service';
+import { Anchor } from '../context-menu-renderer';
 
 @injectable()
 export class BrowserMainMenuFactory {
@@ -43,6 +44,16 @@ export class BrowserMainMenuFactory {
     createMenuBar(): MenuBarWidget {
         const menuBar = new DynamicMenuBarWidget();
         menuBar.id = 'theia:menubar';
+        this.fillMenuBar(menuBar);
+        const listener = this.keybindingRegistry.onKeybindingsChanged(() => {
+            menuBar.clearMenus();
+            this.fillMenuBar(menuBar);
+        });
+        menuBar.disposed.connect(() => listener.dispose());
+        return menuBar;
+    }
+
+    protected fillMenuBar(menuBar: MenuBarWidget): void {
         const menuModel = this.menuProvider.getMenu(MAIN_MENU_BAR);
         const phosphorCommands = this.createPhosphorCommands(menuModel);
         // for the main menu we want all items to be visible.
@@ -54,34 +65,33 @@ export class BrowserMainMenuFactory {
                 menuBar.addMenu(menuWidget);
             }
         }
-        return menuBar;
     }
 
-    createContextMenu(path: MenuPath): MenuWidget {
+    createContextMenu(path: MenuPath, anchor?: Anchor): MenuWidget {
         const menuModel = this.menuProvider.getMenu(path);
-        const phosphorCommands = this.createPhosphorCommands(menuModel);
+        const phosphorCommands = this.createPhosphorCommands(menuModel, anchor);
 
         const contextMenu = new DynamicMenuWidget(menuModel, { commands: phosphorCommands }, this.contextKeyService);
         return contextMenu;
     }
 
-    protected createPhosphorCommands(menu: CompositeMenuNode): PhosphorCommandRegistry {
+    protected createPhosphorCommands(menu: CompositeMenuNode, anchor?: Anchor): PhosphorCommandRegistry {
         const commands = new PhosphorCommandRegistry();
-        this.addPhosphorCommands(commands, menu);
+        this.addPhosphorCommands(commands, menu, anchor);
         return commands;
     }
 
-    protected addPhosphorCommands(commands: PhosphorCommandRegistry, menu: CompositeMenuNode): void {
+    protected addPhosphorCommands(commands: PhosphorCommandRegistry, menu: CompositeMenuNode, anchor?: Anchor): void {
         for (const child of menu.children) {
             if (child instanceof ActionMenuNode) {
-                this.addPhosphorCommand(commands, child);
+                this.addPhosphorCommand(commands, child, anchor);
             } else if (child instanceof CompositeMenuNode) {
-                this.addPhosphorCommands(commands, child);
+                this.addPhosphorCommands(commands, child, anchor);
             }
         }
     }
 
-    protected addPhosphorCommand(commands: PhosphorCommandRegistry, menu: ActionMenuNode): void {
+    protected addPhosphorCommand(commands: PhosphorCommandRegistry, menu: ActionMenuNode, anchor?: Anchor): void {
         const command = this.commandRegistry.getCommand(menu.action.commandId);
         if (!command) {
             return;
@@ -90,12 +100,13 @@ export class BrowserMainMenuFactory {
             // several menu items can be registered for the same command in different contexts
             return;
         }
+        const args = anchor ? [anchor] : [];
         commands.addCommand(command.id, {
-            execute: () => this.commandRegistry.executeCommand(command.id),
+            execute: () => this.commandRegistry.executeCommand(command.id, ...args),
             label: menu.label,
             icon: menu.icon,
-            isEnabled: () => this.commandRegistry.isEnabled(command.id),
-            isVisible: () => this.commandRegistry.isVisible(command.id),
+            isEnabled: () => this.commandRegistry.isEnabled(command.id, ...args),
+            isVisible: () => this.commandRegistry.isVisible(command.id, ...args),
             isToggled: () => this.commandRegistry.isToggled(command.id)
         });
 
@@ -104,7 +115,7 @@ export class BrowserMainMenuFactory {
         /* Only consider the first keybinding. */
         if (bindings.length > 0) {
             const binding = bindings[0];
-            const keys = Keybinding.acceleratorFor(binding);
+            const keys = this.keybindingRegistry.acceleratorFor(binding);
             commands.addKeyBinding({
                 command: command.id,
                 keys,

@@ -244,9 +244,9 @@ export abstract class AbstractHostedInstanceManager implements HostedInstanceMan
         if (environment.electron.is()) {
             command = ['yarn', 'theia', 'start'];
         } else {
-            command = processArguments.filter(arg => {
-                // remove --port= argument if set
-                if (arg.startsWith('--port=')) {
+            command = processArguments.filter((arg, index, args) => {
+                // remove --port=X and --port X arguments if set
+                if (arg.startsWith('--port') || args[index - 1] === '--port') {
                     return;
                 } else {
                     return arg;
@@ -313,7 +313,7 @@ export abstract class AbstractHostedInstanceManager implements HostedInstanceMan
                 if (!started) {
                     this.terminate();
                     this.isPluginRunnig = false;
-                    reject('Timeout.');
+                    reject(new Error('Timeout.'));
                 }
             }, HOSTED_INSTANCE_START_TIMEOUT_MS);
         });

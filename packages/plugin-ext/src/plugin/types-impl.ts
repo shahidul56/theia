@@ -529,9 +529,9 @@ export class ThemeColor {
 
 export class ThemeIcon {
 
-    static readonly File: ThemeIcon;
+    static readonly File: ThemeIcon = new ThemeIcon('file');
 
-    static readonly Folder: ThemeIcon;
+    static readonly Folder: ThemeIcon = new ThemeIcon('folder');
 
     private constructor(public id: string) {
     }
@@ -938,6 +938,7 @@ export class CodeActionKind {
     public static readonly RefactorRewrite = CodeActionKind.Refactor.append('rewrite');
     public static readonly Source = CodeActionKind.Empty.append('source');
     public static readonly SourceOrganizeImports = CodeActionKind.Source.append('organizeImports');
+    public static readonly SourceFixAll = CodeActionKind.Source.append('fixAll');
 
     constructor(
         public readonly value: string
@@ -949,6 +950,10 @@ export class CodeActionKind {
 
     public contains(other: CodeActionKind): boolean {
         return this.value === other.value || startsWithIgnoreCase(other.value, this.value + CodeActionKind.sep);
+    }
+
+    public intersects(other: CodeActionKind): boolean {
+        return this.contains(other) || other.contains(this);
     }
 }
 
@@ -1219,6 +1224,41 @@ export enum FileChangeType {
     Changed = 1,
     Created = 2,
     Deleted = 3,
+}
+
+export class FileSystemError extends Error {
+
+    static FileExists(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'EntryExists', FileSystemError.FileExists);
+    }
+    static FileNotFound(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'EntryNotFound', FileSystemError.FileNotFound);
+    }
+    static FileNotADirectory(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'EntryNotADirectory', FileSystemError.FileNotADirectory);
+    }
+    static FileIsADirectory(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'EntryIsADirectory', FileSystemError.FileIsADirectory);
+    }
+    static NoPermissions(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'NoPermissions', FileSystemError.NoPermissions);
+    }
+    static Unavailable(messageOrUri?: string | URI): FileSystemError {
+        return new FileSystemError(messageOrUri, 'Unavailable', FileSystemError.Unavailable);
+    }
+
+    constructor(uriOrMessage?: string | URI, code?: string, terminator?: Function) {
+        super(URI.isUri(uriOrMessage) ? uriOrMessage.toString(true) : uriOrMessage);
+        this.name = code ? `${code} (FileSystemError)` : 'FileSystemError';
+
+        if (typeof Object.setPrototypeOf === 'function') {
+            Object.setPrototypeOf(this, FileSystemError.prototype);
+        }
+
+        if (typeof Error.captureStackTrace === 'function' && typeof terminator === 'function') {
+            Error.captureStackTrace(this, terminator);
+        }
+    }
 }
 
 export enum FileType {
@@ -1511,13 +1551,51 @@ export class Task {
     private taskSource: string;
     private taskGroup: TaskGroup | undefined;
     private taskPresentationOptions: theia.TaskPresentationOptions | undefined;
-
-    constructor(taskDefinition: theia.TaskDefinition,
+    constructor(
+        taskDefinition: theia.TaskDefinition,
         scope: theia.WorkspaceFolder | theia.TaskScope.Global | theia.TaskScope.Workspace,
         name: string,
         source: string,
         execution?: ProcessExecution | ShellExecution,
-        problemMatchers?: string | string[]) {
+        problemMatchers?: string | string[]
+    );
+
+    // Deprecated constructor used by Jake vscode built-in
+    constructor(
+        taskDefinition: theia.TaskDefinition,
+        name: string,
+        source: string,
+        execution?: ProcessExecution | ShellExecution,
+        problemMatchers?: string | string[],
+    );
+
+    // tslint:disable-next-line:no-any
+    constructor(...args: any[]) {
+        let taskDefinition: theia.TaskDefinition;
+        let scope: theia.WorkspaceFolder | theia.TaskScope.Global | theia.TaskScope.Workspace | undefined;
+        let name: string;
+        let source: string;
+        let execution: ProcessExecution | ShellExecution | undefined;
+        let problemMatchers: string | string[] | undefined;
+
+        if (typeof args[1] === 'string') {
+            [
+                taskDefinition,
+                name,
+                source,
+                execution,
+                problemMatchers,
+            ] = args;
+        } else {
+            [
+                taskDefinition,
+                scope,
+                name,
+                source,
+                execution,
+                problemMatchers,
+            ] = args;
+        }
 
         this.definition = taskDefinition;
         this.scope = scope;
@@ -1554,6 +1632,9 @@ export class Task {
     }
 
     set scope(value: theia.TaskScope.Global | theia.TaskScope.Workspace | theia.WorkspaceFolder | undefined) {
+        if (value === null) {
+            value = undefined;
+        }
         this.taskScope = value;
     }
 
@@ -1644,17 +1725,16 @@ export class Task {
     }
 
     private updateDefinitionBasedOnExecution(): void {
-        this.taskDefinition = undefined;
         if (this.taskExecution instanceof ProcessExecution) {
-            this.taskDefinition = {
+            Object.assign(this.taskDefinition, {
                 type: 'process',
                 id: this.taskExecution.computeId()
-            };
+            });
         } else if (this.taskExecution instanceof ShellExecution) {
-            this.taskDefinition = {
+            Object.assign(this.taskDefinition, {
                 type: 'shell',
                 id: this.taskExecution.computeId()
-            };
+            });
         }
     }
 }

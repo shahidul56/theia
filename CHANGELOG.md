@@ -1,6 +1,104 @@
 # Change Log
 
+## v0.6.0
+
+- [filesystem] added the menu item `Upload Files...` to easily upload files into a workspace
+- [plugin] added `CodeActionKind` `intersects` Plug-in API
+- [task] added support to configure tasks
+- [workspace] allow creation of files and folders using recursive paths
+- [electron] upgraded version of electron used to version 3.
+- [tree] support icons in node tail decorators
+
+Breaking changes:
+
+- [core] support native keyboard layouts [#4724](https://github.com/theia-ide/theia/pull/4724)
+- [node] moved to using Node.js version 10, dropping support for Node.js version 8.
+- [electron] removed cluster mode and startup timeout setting
+- [electron] make Electron runtime dependencies optional [#4873](https://github.com/theia-ide/theia/pull/4873)
+- [dialog] `validate` and `accept` methods are now Promisified [#4764](https://github.com/theia-ide/theia/pull/4764)
+- [editor] turn off autoSave by default to align with VS Code [#4777](https://github.com/theia-ide/theia/pull/4777)
+  - default settings can be overriden in application package.json:
+  ```json
+  {
+    "private": true,
+    "name": "myapp",
+    "theia": {
+      "frontend": {
+        "config": {
+          "preferences": {
+            "editor.autoSave": "on"
+          }
+        }
+      }
+    }
+  }
+  ```
+- [extension-manager] deprecated [#4876](https://github.com/theia-ide/theia/pull/4876)
+
+## v0.5.0
+
+- Added `scope` to task configurations to differentiate 3 things: task type, task source, and where to run tasks
+- [core] added implementation for toolbar support for sidepanels and changed sidepanel tabs
+- [core] added new keybinding <kbd>alt</kbd>+<kbd>shift</kbd>+<kbd>w</kbd> to close all main area tabs
+- [core] added the ability to make sidebar widgets closable
+- [core] fixed `ToolbarAwareTabBar` detachment errors
+- [core] fixed broken wheel listener
+- [core] improved scrollbar styling
+- [core] updated tabbar toolbar to use VSCode icons
+- [core] updated the UI with numerous improvements including sidepanel icons, better alignment, tabbar and menu size
+- [cpp] added new `cpp.clangTidy `and `cpp.clangTidyChecks` preferences to lint cpp program when clangd v9+ is used
+- [cpp] fixed properly restarting clangd language server when changing cpp build configurations
+- [debug] added new debug preferences to control `view`, `console`, and `location` appearance
+- [editorconfig] added support to apply properties to monaco editor when opening/switching editors
+- [file-search] improved ordering and consistency of file search results
+- [filesystem] added `files.associations` property
+- [filesystem] improved the performance when deleting large directories
+- [filesystem] upgraded `nsfw` file-watching dependency from `vscode-nsfw` to `Axosoft/nsfw` which fixes memory leaks as well as fixes issues where files are not being properly watched outside the main watched directory
+- [git] fixed issue where Theia did not refresh the git view after deleting the only repository
+- [git] improved the git diff navigation header to be static
+- [java] improved handling of incomplete classpath commands
+- [keybindings] improved the keybindings widget search and table header to be static
+- [mini-browser] improved error handling of iframe errors
+- [navigator] added `Collapse All` toolbar item
+- [navigator] updated the navigator to handle multi-root workspaces better
+- [plugin-ext] added `workspace.onDidRenameFile ` Plug-in API
+- [plugin-ext] added `workspace.onWillRenameFile ` Plug-in API
+- [plugin-ext] added `workspace.registerFileSystemProvider` Plug-in API
+- [plugin-ext] added `workspace.saveAll` Plug-in API
+- [plugin-ext] added `workspace.updateWorkspaceFolders` Plug-in API
+- [plugin-ext] added ability to proceed `runInTerminal` requests in sidecar containers
+- [plugin-ext] added the ability to get selection context after executing a command
+- [plugin-ext] fixed VSCode Plug-in API incompatibilities for the `onDidChangeActiveTextEditor` event
+- [plugin-ext] fixed firing the `onWillSaveTextDocument` event
+- [plugin-ext] fixed issue of re-deploying already initialized plugins
+- [plugin] `workspace.openTextDocument` API now respects the contributed `FileSystemProviders`
+- [plugin] added support for multiple windows per backend
+- [plugin] fixed progress creation
+- [plugin] improved the view container to use the native toolbar
+- [preferences] fixed content assist when editing `settings.json`
+- [preferences] fixed parsing of settings from workspace files
+- [preferences] improved overriding of default configurations
+- [preview] fixed issue when opening images
+- [search-in-workspace] added a new preference `search.lineNumbers` to control whether to show line numbers for search results
+- [task] added ability to `Run Selected Text`
+- [task] added new command to re-run the last task
+- [task] added schema support for `tasks.json`
+- [typehierarchy] added the new type hierarchy extension
+- [typehierarchy] improved `typehierarchy` to use all levels the language server sends if available
+- [workspace] added new `package.json` properties `newFIleName` and `newFileExtension` to specify default file name and extension when creating a new file
+- [workspace] improved performance of the file rename action for large directories
+
+Breaking changes:
+
+- [editor] computation of resource context keys moved to core [#4531](https://github.com/theia-ide/theia/pull/4531)
+- [plugin] support multiple windows per a backend [#4509](https://github.com/theia-ide/theia/issues/4509)
+  - Some plugin bindings are scoped per a connection now. Clients, who contribute/rebind these bindings, will need to scope them per a connection as well.
+- [quick-open] disable separate fuzzy matching by default [#4549](https://github.com/theia-ide/theia/pull/4549)
+- [shell] support toolbars in side bars [#4600](https://github.com/theia-ide/theia/pull/4600)
+  - In side bars a widget title is rendered as an icon.
+
 ## v0.4.0
+
 - [application-manager] added support for pre-load HTML templates
 - [console] added support for console `when` contexts
 - [core] added support for os `when` contexts
@@ -75,8 +173,8 @@
 - [workspace] fixed displaying the `Open With...` context menu only when more than one open handler is present
 - [mini-browser] improved handling of iframe errors and time-outs
 
-
 Breaking changes:
+
 - menus aligned with built-in VS Code menus [#4173](https://github.com/theia-ide/theia/pull/4173)
   - navigator context menu group changes:
     - `1_open` and `4_new` replaced by `navigation` group
@@ -112,8 +210,8 @@ Breaking changes:
   - `affects` function is added to `PreferenceChangeEvent` and `PreferenceChange` interface
 - `navigator.exclude` preference is renamed to `files.exclude` [#4274](https://github.com/theia-ide/theia/pull/4274)
 
-
 ## v0.3.19
+
 - [core] added `hostname` alias
 - [core] added new `editor.formatOnSave` preference, to format documents on manual save
 - [core] added support for setting end of line character
@@ -153,8 +251,8 @@ Breaking changes:
 - [task] fixed cwd path
 - [workspace] added multiple-root support for `WorkspaceService.getWorkspaceRootUri()`
 
-
 ## v0.3.18
+
 - [core] added a preference to define how to handle application exit
 - [core] added a way to prevent application exit from extensions
 - [core] added functionality to prevent application exit if some editors are dirty
@@ -192,8 +290,8 @@ Breaking changes:
 - [workspace] fixed long label computations for multiple-root workspaces
 - [xterm] updated Xterm to `3.9.1`
 
-
 ## v0.3.17
+
 - Added better widget error handling for different use cases (ex: no workspace present, no repository present, ...)
 - Addressed multiple backend memory leaks
 - Prefixed quick-open commands for easier categorization and searching
@@ -230,8 +328,8 @@ Breaking changes:
 - [workspace] added the context menu item `Collapse All` for the file navigator
 - [workspace] included workspace path as part of the URL fragment
 
-
 ## v0.3.16
+
 - Reverted [cpp] Add debugging for C/C++ programs. This feature will come back in its own cpp-specific repo
 - [callhierarchy][typescript] adapt to hierarchical document symbols
 - [core] added methods to un-register menus, commands and keybindings
@@ -243,8 +341,8 @@ Breaking changes:
 - [terminal] added 'open in terminal' to navigator
 - [windows] implemented drives selector for the file dialog
 
-
 ## v0.3.15
+
 - [cpp] added debugging for C/C++ programs
 - [debug] added debug toolbar
 - [debug] resolved variables in configurations
@@ -254,8 +352,8 @@ Breaking changes:
 - [plug-in] added `menus` contribution point
 - [workspace] added multi-root workspace support with vscode compatibility
 
-
 ## v0.3.13
+
 - Re-implemented additional widgets using React
 - Re-implemented miscellaneous components using React
 - [cpp] added a status bar button to select an active cpp build configuration
@@ -269,12 +367,12 @@ Breaking changes:
 - [ts] added support for one ls for all JavaScript related languages
 - [workspace] added support for recently opened workspaces history
 
-
 ## v0.3.12
+
 - New Plugin system !
-    - See [design](https://github.com/theia-ide/theia/issues/1482) and [documentation](https://github.com/theia-ide/theia/blob/master/packages/plugin/API.md) for more details.
+  - See [design](https://github.com/theia-ide/theia/issues/1482) and [documentation](https://github.com/theia-ide/theia/blob/master/packages/plugin/API.md) for more details.
 - Introducing [Task API](https://github.com/theia-ide/theia/pull/2086).
-    - Note, the format of tasks.json has been changed. For details, see the Task extension's [README.md](https://github.com/theia-ide/theia/blob/master/packages/task/README.md).
+  - Note, the format of tasks.json has been changed. For details, see the Task extension's [README.md](https://github.com/theia-ide/theia/blob/master/packages/task/README.md).
 - Added an UI when developing plugins
 - Migrated widgets to `react`
 - Theia alerts you when the opening of a new tab is denied by the browser
@@ -290,6 +388,7 @@ Breaking changes:
 - `HTML` files now open in the editor by default
 
 ## v0.3.11
+
 - Added search and replace widget
 - Added the ability to delete files on OSX with cmd+backspace
 - Added the ability to set more finely grained logger levels

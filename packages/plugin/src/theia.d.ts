@@ -157,7 +157,6 @@ declare module '@theia/plugin' {
         export let all: Plugin<any>[];
     }
 
-
     /**
  * A command is a unique identifier of a function
  * which can be executed by a user via a keyboard shortcut,
@@ -2664,6 +2663,17 @@ declare module '@theia/plugin' {
         readonly onDidDispose: Event<void>;
 
         /**
+         * Show the webview panel in a given column.
+         *
+         * A webview panel may only show in a single column at a time. If it is already showing, this
+         * method moves it to a new column.
+         *
+         * @param viewColumn View column to show the panel in. Shows in the current `viewColumn` if undefined.
+         * @param preserveFocus When `true`, the webview will not take focus.
+         */
+        reveal(viewColumn?: ViewColumn, preserveFocus?: boolean): void;
+
+        /**
          * Show the webview panel according to a given options.
          *
          * A webview panel may only show in a single column at a time. If it is already showing, this
@@ -3662,6 +3672,60 @@ declare module '@theia/plugin' {
     }
 
     /**
+	 * A type that filesystem providers should use to signal errors.
+	 *
+	 * This class has factory methods for common error-cases, like `EntryNotFound` when
+	 * a file or folder doesn't exist, use them like so: `throw vscode.FileSystemError.EntryNotFound(someUri);`
+	 */
+    export class FileSystemError extends Error {
+
+        /**
+         * Create an error to signal that a file or folder wasn't found.
+         * @param messageOrUri Message or uri.
+         */
+        static FileNotFound(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Create an error to signal that a file or folder already exists, e.g. when
+         * creating but not overwriting a file.
+         * @param messageOrUri Message or uri.
+         */
+        static FileExists(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Create an error to signal that a file is not a folder.
+         * @param messageOrUri Message or uri.
+         */
+        static FileNotADirectory(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Create an error to signal that a file is a folder.
+         * @param messageOrUri Message or uri.
+         */
+        static FileIsADirectory(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Create an error to signal that an operation lacks required permissions.
+         * @param messageOrUri Message or uri.
+         */
+        static NoPermissions(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Create an error to signal that the file system is unavailable or too busy to
+         * complete a request.
+         * @param messageOrUri Message or uri.
+         */
+        static Unavailable(messageOrUri?: string | Uri): FileSystemError;
+
+        /**
+         * Creates a new filesystem error.
+         *
+         * @param messageOrUri Message or uri.
+         */
+        constructor(messageOrUri?: string | Uri);
+    }
+
+    /**
      * Enumeration of file change types.
      */
     export enum FileChangeType {
@@ -4031,6 +4095,14 @@ declare module '@theia/plugin' {
         export function findFiles(include: GlobPattern, exclude?: GlobPattern | null, maxResults?: number, token?: CancellationToken): PromiseLike<Uri[]>;
 
         /**
+         * Save all dirty files.
+         *
+         * @param includeUntitled Also save files that have been created during this session.
+         * @return A thenable that resolves when the files have been saved.
+         */
+        export function saveAll(includeUntitled?: boolean): PromiseLike<boolean>;
+
+        /**
          * Make changes to one or many resources or create, delete, and rename resources as defined by the given
          * [workspace edit](#WorkspaceEdit).
          *
@@ -4048,7 +4120,6 @@ declare module '@theia/plugin' {
          */
         export function applyEdit(edit: WorkspaceEdit): PromiseLike<boolean>;
 
-
         /**
          * Register a filesystem provider for a given scheme, e.g. `ftp`.
          *
@@ -4065,12 +4136,11 @@ declare module '@theia/plugin' {
         /**
          * Returns the [workspace folder](#WorkspaceFolder) that contains a given uri.
          * * returns `undefined` when the given uri doesn't match any workspace folder
-         * * returns the *input* when the given uri is a workspace folder itself
          *
          * @param uri An uri.
          * @return A workspace folder or `undefined`
          */
-        export function getWorkspaceFolder(uri: Uri): WorkspaceFolder | Uri | undefined;
+        export function getWorkspaceFolder(uri: Uri): WorkspaceFolder | undefined;
 
         /**
          * Returns a path that is relative to the workspace folder or folders.
@@ -4085,6 +4155,49 @@ declare module '@theia/plugin' {
          * @return A path relative to the root or the input.
          */
         export function asRelativePath(pathOrUri: string | Uri, includeWorkspaceFolder?: boolean): string | undefined;
+
+        /**
+         * This method replaces `deleteCount` [workspace folders](#workspace.workspaceFolders) starting at index `start`
+         * by an optional set of `workspaceFoldersToAdd` on the `theia.workspace.workspaceFolders` array. This "splice"
+         * behavior can be used to add, remove and change workspace folders in a single operation.
+         *
+         * If the first workspace folder is added, removed or changed, the currently executing extensions (including the
+         * one that called this method) will be terminated and restarted so that the (deprecated) `rootPath` property is
+         * updated to point to the first workspace folder.
+         *
+         * Use the [`onDidChangeWorkspaceFolders()`](#onDidChangeWorkspaceFolders) event to get notified when the
+         * workspace folders have been updated.
+         *
+         * **Example:** adding a new workspace folder at the end of workspace folders
+         * ```typescript
+         * workspace.updateWorkspaceFolders(workspace.workspaceFolders ? workspace.workspaceFolders.length : 0, null, { uri: ...});
+         * ```
+         *
+         * **Example:** removing the first workspace folder
+         * ```typescript
+         * workspace.updateWorkspaceFolders(0, 1);
+         * ```
+         *
+         * **Example:** replacing an existing workspace folder with a new one
+         * ```typescript
+         * workspace.updateWorkspaceFolders(0, 1, { uri: ...});
+         * ```
+         *
+         * It is valid to remove an existing workspace folder and add it again with a different name
+         * to rename that folder.
+         *
+         * **Note:** it is not valid to call [updateWorkspaceFolders()](#updateWorkspaceFolders) multiple times
+         * without waiting for the [`onDidChangeWorkspaceFolders()`](#onDidChangeWorkspaceFolders) to fire.
+         *
+         * @param start the zero-based location in the list of currently opened [workspace folders](#WorkspaceFolder)
+         * from which to start deleting workspace folders.
+         * @param deleteCount the optional number of workspace folders to remove.
+         * @param workspaceFoldersToAdd the optional variable set of workspace folders to add in place of the deleted ones.
+         * Each workspace is identified with a mandatory URI and an optional name.
+         * @return true if the operation was successfully started and false otherwise if arguments were used that would result
+         * in invalid workspace folder state (e.g. 2 folders with the same URI).
+         */
+        export function updateWorkspaceFolders(start: number, deleteCount: number | undefined | null, ...workspaceFoldersToAdd: { uri: Uri, name?: string }[]): boolean;
 
         /**
         * ~~Register a task provider.~~
@@ -4945,7 +5058,6 @@ declare module '@theia/plugin' {
         constructor(range: Range, newText: string);
     }
 
-
     /**
      * Completion item kinds.
      */
@@ -4986,7 +5098,7 @@ declare module '@theia/plugin' {
      * the given [edit](#CompletionItem.textEdit) is used.
      *
      * When selecting a completion item in the editor its defined or synthesized text edit will be applied
-     * to *all* cursors/selections whereas [additionalTextEdits](CompletionItem.additionalTextEdits) will be
+     * to *all* cursors/selections whereas [additionalTextEdits](#additionalTextEdits) will be
      * applied as provided.
      *
      * @see [CompletionItemProvider.provideCompletionItems](#CompletionItemProvider.provideCompletionItems)
@@ -5074,9 +5186,21 @@ declare module '@theia/plugin' {
         /**
          * An optional [command](#Command) that is executed *after* inserting this completion. *Note* that
          * additional modifications to the current document should be described with the
-         * [additionalTextEdits](#CompletionItem.additionalTextEdits)-property.
+         * [additionalTextEdits](#additionalTextEdits)-property.
          */
         command?: Command;
+
+        /**
+         * @deprecated Use `CompletionItem.insertText` and `CompletionItem.range` instead.
+         *
+         * ~~An [edit](#TextEdit) which is applied to a document when selecting
+         * this completion. When an edit is provided the value of
+         * [insertText](#CompletionItem.insertText) is ignored.~~
+         *
+         * ~~The [range](#Range) of the edit must be single-line and on the same
+         * line completions were [requested](#CompletionItemProvider.provideCompletionItems) at.~~
+         */
+        textEdit?: TextEdit;
 
         /**
          * Creates a new completion item.
@@ -5403,7 +5527,7 @@ declare module '@theia/plugin' {
      * A code action represents a change that can be performed in code, e.g. to fix a problem or
      * to refactor code.
      *
-     * A CodeAction must set either [`edit`](CodeAction#edit) and/or a [`command`](CodeAction#command).
+     * A CodeAction must set either [`edit`](#edit) and/or a [`command`](#command).
      * If both are supplied, the `edit` is applied first, then the command is executed.
      */
     export class CodeAction {
@@ -5655,6 +5779,15 @@ declare module '@theia/plugin' {
          * @param other Kind to check.
          */
         contains(other: CodeActionKind): boolean;
+
+        /**
+         * Check if this code action kind intersects `other`.
+         * The kind "refactor.extract" for example intersects refactor, "refactor.extract" and
+         * `"refactor.extract.function", but not "unicorn.refactor.extract", or "refactor.extractAll".
+         *
+         * @param other Kind to check.
+         */
+        intersects(other: CodeActionKind): boolean;
     }
 
     /**
@@ -5926,7 +6059,6 @@ declare module '@theia/plugin' {
         resolveDocumentLink?(link: DocumentLink, token: CancellationToken | undefined): ProviderResult<DocumentLink>;
     }
 
-
     /**
     * The rename provider interface defines the contract between extensions and
     * the [rename](https://code.visualstudio.com/docs/editor/editingevolved#_rename-symbol)-feature.
@@ -6169,7 +6301,7 @@ declare module '@theia/plugin' {
          * Register a formatting provider for a document range.
          *
          * *Note:* A document range provider is also a [document formatter](#DocumentFormattingEditProvider)
-         * which means there is no need to [register](registerDocumentFormattingEditProvider) a document
+         * which means there is no need to [register](#registerDocumentFormattingEditProvider) a document
          * formatter when also registering a range provider.
          *
          * Multiple providers can be registered for a language. In that case providers are sorted
@@ -7036,10 +7168,31 @@ declare module '@theia/plugin' {
          *  or '$eslint'. Problem matchers can be contributed by an extension using
          *  the `problemMatchers` extension point.
          */
-        constructor(taskDefinition: TaskDefinition,
+        constructor(
+            taskDefinition: TaskDefinition,
             scope: WorkspaceFolder | TaskScope.Global | TaskScope.Workspace,
             name: string,
             source?: string,
+            execution?: ProcessExecution | ShellExecution,
+            problemMatchers?: string | string[]);
+
+        /**
+         * ~~Creates a new task.~~
+         *
+         * @deprecated Use the new constructors that allow specifying a scope for the task.
+         *
+         * @param definition The task definition as defined in the taskDefinitions extension point.
+         * @param name The task's name. Is presented in the user interface.
+         * @param source The task's source (e.g. 'gulp', 'npm', ...). Is presented in the user interface.
+         * @param execution The process or shell execution.
+         * @param problemMatchers the names of problem matchers to use, like '$tsc'
+         *  or '$eslint'. Problem matchers can be contributed by an extension using
+         *  the `problemMatchers` extension point.
+         */
+        constructor(
+            taskDefinition: TaskDefinition,
+            name: string,
+            source: string,
             execution?: ProcessExecution | ShellExecution,
             problemMatchers?: string | string[]);
 

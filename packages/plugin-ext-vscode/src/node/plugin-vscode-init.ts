@@ -1,5 +1,5 @@
 /********************************************************************************
- * Copyright (C) 2018 Red Hat, Inc.
+ * Copyright (C) 2018-2019 Red Hat, Inc.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0 which is available at
@@ -19,6 +19,8 @@
 import * as theia from '@theia/plugin';
 import { BackendInitializationFn, PluginAPIFactory, Plugin, emptyPlugin } from '@theia/plugin-ext';
 
+export const VSCODE_DEFAULT_API_VERSION = '1.33.1';
+
 /** Set up en as a default locale for VS Code extensions using vscode-nls */
 process.env['VSCODE_NLS_CONFIG'] = JSON.stringify({ locale: 'en', availableLanguages: {} });
 process.env['VSCODE_PID'] = process.env['THEIA_PARENT_PID'];
@@ -34,12 +36,12 @@ export const doInitialization: BackendInitializationFn = (apiFactory: PluginAPIF
 
     // replace command API as it will send only the ID as a string parameter
     const registerCommand = vscode.commands.registerCommand;
-    vscode.commands.registerCommand = function (command: any, handler?: <T>(...args: any[]) => T | Thenable<T>): any {
+    vscode.commands.registerCommand = function (command: any, handler?: <T>(...args: any[]) => T | Thenable<T>, thisArg?: any): any {
         // use of the ID when registering commands
         if (typeof command === 'string' && handler) {
-            return vscode.commands.registerHandler(command, handler);
+            return vscode.commands.registerHandler(command, handler, thisArg);
         }
-        return registerCommand(command, handler);
+        return registerCommand(command, handler, thisArg);
     };
 
     // replace createWebviewPanel API for override html setter
@@ -72,15 +74,15 @@ export const doInitialization: BackendInitializationFn = (apiFactory: PluginAPIF
     };
 
     // override the version for vscode to be a VSCode version
-    (<any>vscode).version = '1.27.2';
+    (<any>vscode).version = process.env['VSCODE_API_VERSION'] || VSCODE_DEFAULT_API_VERSION;
 
     pluginsApiImpl.set(plugin.model.id, vscode);
     plugins.push(plugin);
+    pluginApiFactory = apiFactory;
 
     if (!isLoadOverride) {
         overrideInternalLoad();
         isLoadOverride = true;
-        pluginApiFactory = apiFactory;
     }
 };
 

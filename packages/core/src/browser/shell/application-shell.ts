@@ -15,7 +15,7 @@
  ********************************************************************************/
 
 import { injectable, inject, optional, postConstruct } from 'inversify';
-import { ArrayExt, find, toArray } from '@phosphor/algorithm';
+import { ArrayExt, find, toArray, each } from '@phosphor/algorithm';
 import { Signal } from '@phosphor/signaling';
 import {
     BoxLayout, BoxPanel, DockLayout, DockPanel, FocusTracker, Layout, Panel, SplitLayout,
@@ -745,6 +745,34 @@ export class ApplicationShell extends Widget {
     }
 
     /**
+     * Find the widget that contains the given HTML element. The returned widget may be one
+     * that is managed by the application shell, or one that is embedded in another widget and
+     * not directly managed by the shell, or a tab bar.
+     */
+    findWidgetForElement(element: HTMLElement): Widget | undefined {
+        let widgetNode: HTMLElement | null = element;
+        while (widgetNode && !widgetNode.classList.contains('p-Widget')) {
+            widgetNode = widgetNode.parentElement;
+        }
+        if (widgetNode) {
+            return this.findWidgetForNode(widgetNode, this);
+        }
+        return undefined;
+    }
+
+    private findWidgetForNode(widgetNode: HTMLElement, widget: Widget): Widget | undefined {
+        if (widget.node === widgetNode) {
+            return widget;
+        }
+        let result: Widget | undefined;
+        each(widget.children(), child => {
+            result = this.findWidgetForNode(widgetNode, child);
+            return !result;
+        });
+        return result;
+    }
+
+    /**
      * The current widget in the application shell. The current widget is the last widget that
      * was active and not yet closed. See the remarks to `activeWidget` on what _active_ means.
      */
@@ -1067,7 +1095,7 @@ export class ApplicationShell extends Widget {
                 alignment: StatusBarAlignment.RIGHT,
                 tooltip: 'Toggle Bottom Panel',
                 command: 'core.toggle.bottom.panel',
-                priority: 0
+                priority: -1000
             };
             this.statusBar.setElement(BOTTOM_PANEL_TOGGLE_ID, element);
         }
@@ -1133,20 +1161,35 @@ export class ApplicationShell extends Widget {
      * undefined if the widget does not reside directly in the shell.
      */
     getAreaFor(widget: Widget): ApplicationShell.Area | undefined {
-        const title = widget.title;
-        const mainPanelTabBar = this.mainPanel.findTabBar(title);
-        if (mainPanelTabBar) {
-            return 'main';
-        }
-        const bottomPanelTabBar = this.bottomPanel.findTabBar(title);
-        if (bottomPanelTabBar) {
-            return 'bottom';
-        }
-        if (ArrayExt.firstIndexOf(this.leftPanelHandler.tabBar.titles, title) > -1) {
-            return 'left';
-        }
-        if (ArrayExt.firstIndexOf(this.rightPanelHandler.tabBar.titles, title) > -1) {
-            return 'right';
+        if (widget instanceof TabBar) {
+            if (find(this.mainPanel.tabBars(), tb => tb === widget)) {
+                return 'main';
+            }
+            if (find(this.bottomPanel.tabBars(), tb => tb === widget)) {
+                return 'bottom';
+            }
+            if (this.leftPanelHandler.tabBar === widget) {
+                return 'left';
+            }
+            if (this.rightPanelHandler.tabBar === widget) {
+                return 'right';
+            }
+        } else {
+            const title = widget.title;
+            const mainPanelTabBar = this.mainPanel.findTabBar(title);
+            if (mainPanelTabBar) {
+                return 'main';
+            }
+            const bottomPanelTabBar = this.bottomPanel.findTabBar(title);
+            if (bottomPanelTabBar) {
+                return 'bottom';
+            }
+            if (ArrayExt.firstIndexOf(this.leftPanelHandler.tabBar.titles, title) > -1) {
+                return 'left';
+            }
+            if (ArrayExt.firstIndexOf(this.rightPanelHandler.tabBar.titles, title) > -1) {
+                return 'right';
+            }
         }
         return undefined;
     }
@@ -1401,19 +1444,19 @@ export namespace ApplicationShell {
         bottomPanel: Object.freeze(<BottomPanelOptions>{
             emptySize: 140,
             expandThreshold: 160,
-            expandDuration: 150,
+            expandDuration: 0,
             initialSizeRatio: 0.382
         }),
         leftPanel: Object.freeze(<SidePanel.Options>{
             emptySize: 140,
             expandThreshold: 140,
-            expandDuration: 150,
+            expandDuration: 0,
             initialSizeRatio: 0.191
         }),
         rightPanel: Object.freeze(<SidePanel.Options>{
             emptySize: 140,
             expandThreshold: 140,
-            expandDuration: 150,
+            expandDuration: 0,
             initialSizeRatio: 0.191
         })
     });

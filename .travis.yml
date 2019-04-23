@@ -1,6 +1,6 @@
 sudo: required
 language: node_js
-node_js: '8'
+node_js: '10'
 git:
   depth: 1
 cache:
@@ -11,6 +11,7 @@ cache:
 # start_cache_directories
   - dev-packages/application-manager/node_modules
   - dev-packages/application-package/node_modules
+  - dev-packages/electron/node_modules
   - examples/browser/node_modules
   - examples/electron/node_modules
   - node_modules
@@ -55,6 +56,7 @@ cache:
   - packages/terminal/node_modules
   - packages/textmate-grammars/node_modules
   - packages/tslint/node_modules
+  - packages/typehierarchy/node_modules
   - packages/typescript/node_modules
   - packages/userstorage/node_modules
   - packages/variable-resolver/node_modules
@@ -71,12 +73,15 @@ env:
     - NODE_OPTIONS="--max_old_space_size=4096"
 addons:
   apt:
+    update: true
     sources:
     - ubuntu-toolchain-r-test
     packages:
     - g++-4.8
     - oracle-java9-set-default
     - libsecret-1-dev
+    - libx11-dev
+    - libxkbfile-dev
     chrome: stable
 before_script:
   - export DISPLAY=:99.0; sh -e /etc/init.d/xvfb start ;
@@ -117,9 +122,16 @@ jobs:
     before_deploy:
       - printf "//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}\n" >> ~/.npmrc
       - yarn
+      - yarn run docs
     deploy:
-      provider: script
-      script: yarn run publish:next
-      on:
-        branch: master
-      skip_cleanup: true
+      - provider: script
+        script: yarn run publish:next
+        on:
+          branch: master
+        skip_cleanup: true
+      - provider: pages
+        skip-cleanup: true
+        github-token: $GITHUB_TOKEN
+        local-dir: gh-pages
+        on:
+          branch: master

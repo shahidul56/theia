@@ -18,6 +18,11 @@
     color: var(--theia-ui-font-color1);
 }
 
+.theia-git-diff-icon {
+    -webkit-mask: url('git-diff.svg');
+    mask: url('git-diff.svg');
+}
+
 .theia-git .git-diff-container {
     display: flex;
     flex-direction: column;
@@ -36,7 +41,7 @@
 
 .theia-git .header-row {
     display: flex;
-    flex-direction: row; 
+    flex-direction: row;
 }
 
 .theia-git .header-value {
@@ -63,4 +68,9 @@
     display: inline-block;
     margin-left: 10px;
     cursor: pointer;
+}
+
+.theia-git .listContainer.filesChanged {
+    flex: 1;
+    overflow: auto;
 }

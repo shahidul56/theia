@@ -35,7 +35,7 @@ import * as React from 'react';
 import { NavigatorContextKeyService } from './navigator-context-key-service';
 
 export const FILE_NAVIGATOR_ID = 'files';
-export const LABEL = 'Files';
+export const LABEL = 'Explorer';
 export const CLASS = 'theia-Files';
 
 @injectable()
@@ -60,7 +60,8 @@ export class FileNavigatorWidget extends FileTreeWidget {
         this.id = FILE_NAVIGATOR_ID;
         this.title.label = LABEL;
         this.title.caption = LABEL;
-        this.title.iconClass = 'fa navigator-tab-icon';
+        this.title.closable = true;
+        this.title.iconClass = 'navigator-tab-icon';
         this.addClass(CLASS);
         this.initialize();
     }
@@ -70,12 +71,9 @@ export class FileNavigatorWidget extends FileTreeWidget {
         super.init();
         this.updateSelectionContextKeys();
         this.toDispose.pushAll([
-            this.model.onSelectionChanged(selection => {
-                if (this.shell.activeWidget === this) {
-                    this.selectionService.selection = selection;
-                }
-                this.updateSelectionContextKeys();
-            }),
+            this.model.onSelectionChanged(() =>
+                this.updateSelectionContextKeys()
+            ),
             this.model.onExpansionChanged(node => {
                 if (node.expanded && node.children.length === 1) {
                     const child = node.children[0];
@@ -83,13 +81,13 @@ export class FileNavigatorWidget extends FileTreeWidget {
                         this.model.expandNode(child);
                     }
                 }
+
             })
         ]);
     }
 
-    protected onActivateRequest(msg: Message): void {
-        super.onActivateRequest(msg);
-        this.selectionService.selection = this.model.selectedNodes;
+    protected async initialize(): Promise<void> {
+        await this.model.updateRoot();
         const root = this.model.root;
         if (CompositeTreeNode.is(root) && root.children.length === 1) {
             const child = root.children[0];
@@ -98,10 +96,6 @@ export class FileNavigatorWidget extends FileTreeWidget {
                 this.model.expandNode(child);
             }
         }
-    }
-
-    protected async initialize(): Promise<void> {
-        await this.model.updateRoot();
     }
 
     protected enableDndOnMainPanel(): void {
@@ -219,7 +213,8 @@ export class FileNavigatorWidget extends FileTreeWidget {
     }
 
     protected handleClickEvent(node: TreeNode | undefined, event: React.MouseEvent<HTMLElement>): void {
-        if (node && this.corePreferences['list.openMode'] === 'singleClick') {
+        const modifierKeyCombined: boolean = isOSX ? (event.shiftKey || event.metaKey) : (event.shiftKey || event.ctrlKey);
+        if (!modifierKeyCombined && node && this.corePreferences['list.openMode'] === 'singleClick') {
             this.model.previewNode(node);
         }
         super.handleClickEvent(node, event);

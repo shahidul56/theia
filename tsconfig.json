@@ -16,9 +16,6 @@
       "@theia/core/lib/*": [
         "packages/core/src/*"
       ],
-      "@theia/extension-manager/lib/*": [
-        "packages/extension-manager/src/*"
-      ],
       "@theia/filesystem/lib/*": [
         "packages/filesystem/src/*"
       ],
@@ -94,6 +91,9 @@
       "@theia/callhierarchy/lib/*": [
         "packages/callhierarchy/src/*"
       ],
+      "@theia/typehierarchy/lib/*": [
+        "packages/typehierarchy/src/*"
+      ],
       "@theia/variable-resolver/lib/*": [
         "packages/variable-resolver/src/*"
       ],
@@ -108,6 +108,15 @@
       ],
       "@theia/getting-started/lib/*": [
         "packages/getting-started/src/*"
+      ],
+      "@theia/file-search/lib/*": [
+        "packages/file-search/src/*"
+      ],
+      "@theia/plugin-ext/lib/*": [
+        "packages/plugin-ext/src/*"
+      ],
+      "@theia/plugin-ext-vscode/lib/*": [
+        "packages/plugin-ext-vscode/src/*"
       ]
     },
     "plugins": [

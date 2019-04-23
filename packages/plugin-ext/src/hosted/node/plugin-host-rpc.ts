@@ -24,13 +24,14 @@ import { ExtPluginApi } from '../../common/plugin-ext-api-contribution';
 import { DebugExtImpl } from '../../plugin/node/debug/debug';
 import { EditorsAndDocumentsExtImpl } from '../../plugin/editors-and-documents';
 import { WorkspaceExtImpl } from '../../plugin/workspace';
+import { MessageRegistryExt } from '../../plugin/message-registry';
 
 /**
  * Handle the RPC calls.
  */
 export class PluginHostRPC {
 
-    private static apiFactory: PluginAPIFactory;
+    private apiFactory: PluginAPIFactory;
 
     private pluginManager: PluginManagerExtImpl;
 
@@ -42,7 +43,8 @@ export class PluginHostRPC {
         const envExt = new EnvExtImpl(this.rpc);
         const debugExt = new DebugExtImpl(this.rpc);
         const editorsAndDocumentsExt = new EditorsAndDocumentsExtImpl(this.rpc);
-        const workspaceExt = new WorkspaceExtImpl(this.rpc, editorsAndDocumentsExt);
+        const messageRegistryExt = new MessageRegistryExt(this.rpc);
+        const workspaceExt = new WorkspaceExtImpl(this.rpc, editorsAndDocumentsExt, messageRegistryExt);
         const preferenceRegistryExt = new PreferenceRegistryExtImpl(this.rpc, workspaceExt);
         this.pluginManager = this.createPluginManager(envExt, preferenceRegistryExt, this.rpc);
         this.rpc.set(MAIN_RPC_CONTEXT.HOSTED_PLUGIN_MANAGER_EXT, this.pluginManager);
@@ -50,35 +52,75 @@ export class PluginHostRPC {
         this.rpc.set(MAIN_RPC_CONTEXT.WORKSPACE_EXT, workspaceExt);
         this.rpc.set(MAIN_RPC_CONTEXT.PREFERENCE_REGISTRY_EXT, preferenceRegistryExt);
 
-        PluginHostRPC.apiFactory = createAPIFactory(
+        this.apiFactory = createAPIFactory(
             this.rpc,
             this.pluginManager,
             envExt,
             debugExt,
             preferenceRegistryExt,
             editorsAndDocumentsExt,
-            workspaceExt
+            workspaceExt,
+            messageRegistryExt
         );
     }
 
     // tslint:disable-next-line:no-any
-    static initialize(contextPath: string, plugin: Plugin): any {
+    initContext(contextPath: string, plugin: Plugin): any {
         console.log('PLUGIN_HOST(' + process.pid + '): initializing(' + contextPath + ')');
         try {
             const backendInit = require(contextPath);
-            backendInit.doInitialization(PluginHostRPC.apiFactory, plugin);
+            backendInit.doInitialization(this.apiFactory, plugin);
         } catch (e) {
             console.error(e);
         }
     }
 
+    /*
+     * Stop the given context by calling the plug-in manager.
+     * note: stopPlugin can also be invoked through RPC proxy.
+     */
+    stopContext(): PromiseLike<void> {
+        const promise = this.pluginManager.$stopPlugin('');
+        promise.then(() => delete this.apiFactory);
+        return promise;
+    }
+
     // tslint:disable-next-line:no-any
     createPluginManager(envExt: EnvExtImpl, preferencesManager: PreferenceRegistryExtImpl, rpc: any): PluginManagerExtImpl {
         const { extensionTestsPath } = process.env;
+        const self = this;
         const pluginManager = new PluginManagerExtImpl({
             loadPlugin(plugin: Plugin): void {
                 console.log('PLUGIN_HOST(' + process.pid + '): PluginManagerExtImpl/loadPlugin(' + plugin.pluginPath + ')');
                 try {
+                    // cleaning the cache for all files of that plug-in.
+                    Object.keys(require.cache).forEach(function (key) {
+                        const mod = require.cache[key];
+
+                        // remove children that are extensions
+                        let i = mod.children.length;
+                        while (i--) {
+                            const childMod: NodeJS.Module = mod.children[i];
+                            if (childMod && childMod.id.startsWith(plugin.pluginFolder)) {
+                                // cleanup exports
+                                childMod.exports = {};
+                                mod.children.splice(i, 1);
+                                for (let j = 0; j < childMod.children.length; j++) {
+                                    delete childMod.children[j];
+                                }
+                            }
+                        }
+
+                        if (key.startsWith(plugin.pluginFolder)) {
+                            // delete entry
+                            delete require.cache[key];
+                            const ix = mod.parent.children.indexOf(mod);
+                            if (ix >= 0) {
+                                mod.parent.children.splice(ix, 1);
+                            }
+                        }
+
+                    });
                     return require(plugin.pluginPath);
                 } catch (e) {
                     console.error(e);
@@ -91,8 +133,16 @@ export class PluginHostRPC {
                 for (const plg of raw) {
                     const pluginModel = plg.model;
                     const pluginLifecycle = plg.lifecycle;
-                    if (pluginModel.entryPoint!.backend) {
 
+                    if (pluginModel.entryPoint!.frontend) {
+                        foreign.push({
+                            pluginPath: pluginModel.entryPoint.frontend!,
+                            pluginFolder: plg.source.packagePath,
+                            model: pluginModel,
+                            lifecycle: pluginLifecycle,
+                            rawModel: plg.source
+                        });
+                    } else {
                         let backendInitPath = pluginLifecycle.backendInitPath;
                         // if no init path, try to init as regular Theia plugin
                         if (!backendInitPath) {
@@ -107,17 +157,9 @@ export class PluginHostRPC {
                             rawModel: plg.source
                         };
 
-                        PluginHostRPC.initialize(backendInitPath, plugin);
+                        self.initContext(backendInitPath, plugin);
 
                         result.push(plugin);
-                    } else {
-                        foreign.push({
-                            pluginPath: pluginModel.entryPoint.frontend!,
-                            pluginFolder: plg.source.packagePath,
-                            model: pluginModel,
-                            lifecycle: pluginLifecycle,
-                            rawModel: plg.source
-                        });
                     }
                 }
                 return [result, foreign];

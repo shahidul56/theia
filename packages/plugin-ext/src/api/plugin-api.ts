@@ -53,6 +53,8 @@ import {
     Breakpoint,
     ColorPresentation,
     RenameLocation,
+    FileMoveEvent,
+    FileWillMoveEvent
 } from './model';
 import { ExtPluginApi } from '../common/plugin-ext-api-contribution';
 import { KeysToAnyValues, KeysToKeysToAnyValue } from '../common/types';
@@ -375,19 +377,22 @@ export interface QuickOpenMain {
 
 export interface WorkspaceMain {
     $pickWorkspaceFolder(options: WorkspaceFolderPickOptionsMain): Promise<theia.WorkspaceFolder | undefined>;
-    $startFileSearch(includePattern: string, excludePatternOrDisregardExcludes: string | false,
+    $startFileSearch(includePattern: string, includeFolder: string | undefined, excludePatternOrDisregardExcludes: string | false,
         maxResults: number | undefined, token: theia.CancellationToken): PromiseLike<UriComponents[]>;
     $registerTextDocumentContentProvider(scheme: string): Promise<void>;
     $unregisterTextDocumentContentProvider(scheme: string): void;
     $onTextDocumentContentChange(uri: string, content: string): void;
     $registerFileSystemWatcher(options: FileWatcherSubscriberOptions): Promise<string>;
     $unregisterFileSystemWatcher(watcherId: string): Promise<void>;
+    $updateWorkspaceFolders(start: number, deleteCount?: number, ...rootsToAdd: string[]): Promise<void>;
 }
 
 export interface WorkspaceExt {
     $onWorkspaceFoldersChanged(event: WorkspaceRootsChangeEvent): void;
     $provideTextDocumentContent(uri: string): Promise<string | undefined>;
     $fileChanged(event: FileChangeEvent): void;
+    $onFileRename(event: FileMoveEvent): void;
+    $onWillRename(event: FileWillMoveEvent): Promise<any>;
 }
 
 export interface DialogsMain {
@@ -404,7 +409,7 @@ export interface TreeViewsMain {
 export interface TreeViewsExt {
     $getChildren(treeViewId: string, treeItemId: string | undefined): Promise<TreeViewItem[] | undefined>;
     $setExpanded(treeViewId: string, treeItemId: string, expanded: boolean): Promise<any>;
-    $setSelection(treeViewId: string, treeItemId: string): Promise<any>;
+    $setSelection(treeViewId: string, treeItemId: string, contextSelection: boolean): Promise<any>;
 }
 
 export class TreeViewItem {
@@ -418,6 +423,8 @@ export class TreeViewItem {
     tooltip?: string;
 
     collapsibleState?: TreeViewItemCollapsibleState;
+
+    metadata?: any;
 
 }
 
@@ -651,6 +658,7 @@ export interface TextEditorsMain {
     $tryApplyEdits(id: string, modelVersionId: number, edits: SingleEditOperation[], opts: ApplyEditsOptions): Promise<boolean>;
     $tryApplyWorkspaceEdit(workspaceEditDto: WorkspaceEditDto): Promise<boolean>;
     $tryInsertSnippet(id: string, template: string, selections: Range[], opts: UndoStopOptions): Promise<boolean>;
+    $saveAll(includeUntitled?: boolean): Promise<boolean>;
     // $getDiffInformation(id: string): Promise<editorCommon.ILineChange[]>;
 }
 
@@ -701,7 +709,7 @@ export interface ModelChangedEvent {
 export interface DocumentsExt {
     $acceptModelModeChanged(startUrl: UriComponents, oldModeId: string, newModeId: string): void;
     $acceptModelSaved(strUrl: UriComponents): void;
-    $acceptModelWillSave(strUrl: UriComponents, reason: theia.TextDocumentSaveReason): Promise<SingleEditOperation[]>;
+    $acceptModelWillSave(strUrl: UriComponents, reason: theia.TextDocumentSaveReason, saveTimeout: number): Promise<SingleEditOperation[]>;
     $acceptDirtyStateChanged(strUrl: UriComponents, isDirty: boolean): void;
     $acceptModelChanged(strUrl: UriComponents, e: ModelChangedEvent, isDirty: boolean): void;
 }
@@ -735,6 +743,13 @@ export interface PreferenceChangeExt {
     preferenceName: string,
     newValue: any
 }
+
+export interface TerminalOptionsExt {
+    attributes?: {
+        [key: string]: string;
+    }
+}
+
 export interface PreferenceRegistryExt {
     $acceptConfigurationChanged(data: { [key: string]: any }, eventData: PreferenceChangeExt): void;
 }
@@ -847,47 +862,53 @@ export interface ProcessTaskDto extends TaskDto, CommandProperties {
 }
 
 export interface LanguagesExt {
-    $provideCompletionItems(handle: number, resource: UriComponents, position: Position, context: CompletionContext): Promise<CompletionResultDto | undefined>;
-    $resolveCompletionItem(handle: number, resource: UriComponents, position: Position, completion: Completion): Promise<Completion>;
+    $provideCompletionItems(handle: number, resource: UriComponents, position: Position,
+        context: CompletionContext, token?: CancellationToken): Promise<CompletionResultDto | undefined>;
+    $resolveCompletionItem(handle: number, resource: UriComponents, position: Position, completion: Completion, token?: CancellationToken): Promise<Completion>;
     $releaseCompletionItems(handle: number, id: number): void;
-    $provideImplementation(handle: number, resource: UriComponents, position: Position): Promise<Definition | DefinitionLink[] | undefined>;
-    $provideTypeDefinition(handle: number, resource: UriComponents, position: Position): Promise<Definition | DefinitionLink[] | undefined>;
-    $provideDefinition(handle: number, resource: UriComponents, position: Position): Promise<Definition | DefinitionLink[] | undefined>;
-    $provideReferences(handle: number, resource: UriComponents, position: Position, context: ReferenceContext): Promise<Location[] | undefined>;
-    $provideSignatureHelp(handle: number, resource: UriComponents, position: Position): Promise<SignatureHelp | undefined>;
-    $provideHover(handle: number, resource: UriComponents, position: Position): Promise<Hover | undefined>;
-    $provideDocumentHighlights(handle: number, resource: UriComponents, position: Position): Promise<DocumentHighlight[] | undefined>;
-    $provideDocumentFormattingEdits(handle: number, resource: UriComponents, options: FormattingOptions): Promise<ModelSingleEditOperation[] | undefined>;
-    $provideDocumentRangeFormattingEdits(handle: number, resource: UriComponents, range: Range, options: FormattingOptions): Promise<ModelSingleEditOperation[] | undefined>;
+    $provideImplementation(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<Definition | DefinitionLink[] | undefined>;
+    $provideTypeDefinition(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<Definition | DefinitionLink[] | undefined>;
+    $provideDefinition(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<Definition | DefinitionLink[] | undefined>;
+    $provideReferences(handle: number, resource: UriComponents, position: Position, context: ReferenceContext, token?: CancellationToken): Promise<Location[] | undefined>;
+    $provideSignatureHelp(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<SignatureHelp | undefined>;
+    $provideHover(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<Hover | undefined>;
+    $provideDocumentHighlights(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): Promise<DocumentHighlight[] | undefined>;
+    $provideDocumentFormattingEdits(handle: number, resource: UriComponents,
+        options: FormattingOptions, token?: CancellationToken): Promise<ModelSingleEditOperation[] | undefined>;
+    $provideDocumentRangeFormattingEdits(handle: number, resource: UriComponents, range: Range,
+        options: FormattingOptions, token?: CancellationToken): Promise<ModelSingleEditOperation[] | undefined>;
     $provideOnTypeFormattingEdits(
         handle: number,
         resource: UriComponents,
         position: Position,
         ch: string,
-        options: FormattingOptions
+        options: FormattingOptions,
+        token?: CancellationToken
     ): Promise<ModelSingleEditOperation[] | undefined>;
-    $provideDocumentLinks(handle: number, resource: UriComponents): Promise<DocumentLink[] | undefined>;
-    $resolveDocumentLink(handle: number, link: DocumentLink): Promise<DocumentLink | undefined>;
-    $provideCodeLenses(handle: number, resource: UriComponents): Promise<CodeLensSymbol[] | undefined>;
-    $resolveCodeLens(handle: number, resource: UriComponents, symbol: CodeLensSymbol): Promise<CodeLensSymbol | undefined>;
+    $provideDocumentLinks(handle: number, resource: UriComponents, token?: CancellationToken): Promise<DocumentLink[] | undefined>;
+    $resolveDocumentLink(handle: number, link: DocumentLink, token?: CancellationToken): Promise<DocumentLink | undefined>;
+    $provideCodeLenses(handle: number, resource: UriComponents, token?: CancellationToken): Promise<CodeLensSymbol[] | undefined>;
+    $resolveCodeLens(handle: number, resource: UriComponents, symbol: CodeLensSymbol, token?: CancellationToken): Promise<CodeLensSymbol | undefined>;
     $provideCodeActions(
         handle: number,
         resource: UriComponents,
         rangeOrSelection: Range | Selection,
-        context: monaco.languages.CodeActionContext
+        context: monaco.languages.CodeActionContext,
+        token?: CancellationToken
     ): Promise<monaco.languages.CodeAction[]>;
-    $provideDocumentSymbols(handle: number, resource: UriComponents): Promise<DocumentSymbol[] | undefined>;
-    $provideWorkspaceSymbols(handle: number, query: string): PromiseLike<SymbolInformation[]>;
-    $resolveWorkspaceSymbol(handle: number, symbol: SymbolInformation): PromiseLike<SymbolInformation>;
+    $provideDocumentSymbols(handle: number, resource: UriComponents, token?: CancellationToken): Promise<DocumentSymbol[] | undefined>;
+    $provideWorkspaceSymbols(handle: number, query: string, token?: CancellationToken): PromiseLike<SymbolInformation[]>;
+    $resolveWorkspaceSymbol(handle: number, symbol: SymbolInformation, token?: CancellationToken): PromiseLike<SymbolInformation>;
     $provideFoldingRange(
         handle: number,
         resource: UriComponents,
-        context: monaco.languages.FoldingContext
+        context: monaco.languages.FoldingContext,
+        token?: CancellationToken
     ): PromiseLike<monaco.languages.FoldingRange[] | undefined>;
-    $provideDocumentColors(handle: number, resource: UriComponents): PromiseLike<RawColorInfo[]>;
-    $provideColorPresentations(handle: number, resource: UriComponents, colorInfo: RawColorInfo): PromiseLike<ColorPresentation[]>;
-    $provideRenameEdits(handle: number, resource: UriComponents, position: Position, newName: string): PromiseLike<WorkspaceEditDto | undefined>;
-    $resolveRenameLocation(handle: number, resource: UriComponents, position: Position): PromiseLike<RenameLocation | undefined>;
+    $provideDocumentColors(handle: number, resource: UriComponents, token?: CancellationToken): PromiseLike<RawColorInfo[]>;
+    $provideColorPresentations(handle: number, resource: UriComponents, colorInfo: RawColorInfo, token?: CancellationToken): PromiseLike<ColorPresentation[]>;
+    $provideRenameEdits(handle: number, resource: UriComponents, position: Position, newName: string, token?: CancellationToken): PromiseLike<WorkspaceEditDto | undefined>;
+    $resolveRenameLocation(handle: number, resource: UriComponents, position: Position, token?: CancellationToken): PromiseLike<RenameLocation | undefined>;
 }
 
 export interface LanguagesMain {
@@ -898,7 +919,7 @@ export interface LanguagesMain {
     $registerImplementationProvider(handle: number, selector: SerializedDocumentFilter[]): void;
     $registerTypeDefinitionProvider(handle: number, selector: SerializedDocumentFilter[]): void;
     $registerDefinitionProvider(handle: number, selector: SerializedDocumentFilter[]): void;
-    $registeReferenceProvider(handle: number, selector: SerializedDocumentFilter[]): void;
+    $registerReferenceProvider(handle: number, selector: SerializedDocumentFilter[]): void;
     $registerSignatureHelpProvider(handle: number, selector: SerializedDocumentFilter[], triggerCharacters: string[]): void;
     $registerHoverProvider(handle: number, selector: SerializedDocumentFilter[]): void;
     $registerDocumentHighlightProvider(handle: number, selector: SerializedDocumentFilter[]): void;
@@ -978,6 +999,7 @@ export interface DebugExt {
     $getConfigurationSnippets(debugType: string): Promise<IJSONSchemaSnippet[]>;
     $createDebugSession(debugConfiguration: theia.DebugConfiguration): Promise<string>;
     $terminateDebugSession(sessionId: string): Promise<void>;
+    $getTerminalCreationOptions(debugType: string): Promise<TerminalOptionsExt | undefined>;
 }
 
 export interface DebugMain {
@@ -989,6 +1011,16 @@ export interface DebugMain {
     $removeBreakpoints(breakpoints: Breakpoint[]): Promise<void>;
     $startDebugging(folder: theia.WorkspaceFolder | undefined, nameOrConfiguration: string | theia.DebugConfiguration): Promise<boolean>;
     $customRequest(sessionId: string, command: string, args?: any): Promise<DebugProtocol.Response>;
+}
+
+export interface FileSystemExt {
+    $readFile(handle: number, resource: UriComponents, options?: { encoding?: string }): Promise<string>;
+    $writeFile(handle: number, resource: UriComponents, content: string, options?: { encoding?: string }): Promise<void>;
+}
+
+export interface FileSystemMain {
+    $registerFileSystemProvider(handle: number, scheme: string): void;
+    $unregisterProvider(handle: number): void;
 }
 
 export const PLUGIN_RPC_CONTEXT = {
@@ -1012,7 +1044,8 @@ export const PLUGIN_RPC_CONTEXT = {
     STORAGE_MAIN: createProxyIdentifier<StorageMain>('StorageMain'),
     TASKS_MAIN: createProxyIdentifier<TasksMain>('TasksMain'),
     LANGUAGES_CONTRIBUTION_MAIN: createProxyIdentifier<LanguagesContributionMain>('LanguagesContributionMain'),
-    DEBUG_MAIN: createProxyIdentifier<DebugMain>('DebugMain')
+    DEBUG_MAIN: createProxyIdentifier<DebugMain>('DebugMain'),
+    FILE_SYSTEM_MAIN: createProxyIdentifier<FileSystemMain>('FileSystemMain')
 };
 
 export const MAIN_RPC_CONTEXT = {
@@ -1034,12 +1067,13 @@ export const MAIN_RPC_CONTEXT = {
     STORAGE_EXT: createProxyIdentifier<StorageExt>('StorageExt'),
     TASKS_EXT: createProxyIdentifier<TasksExt>('TasksExt'),
     LANGUAGES_CONTRIBUTION_EXT: createProxyIdentifier<LanguagesContributionExt>('LanguagesContributionExt'),
-    DEBUG_EXT: createProxyIdentifier<DebugExt>('DebugExt')
+    DEBUG_EXT: createProxyIdentifier<DebugExt>('DebugExt'),
+    FILE_SYSTEM_EXT: createProxyIdentifier<FileSystemExt>('FileSystemExt')
 };
 
 export interface TasksExt {
-    $provideTasks(handle: number): Promise<TaskDto[] | undefined>;
-    $resolveTask(handle: number, task: TaskDto): Promise<TaskDto | undefined>;
+    $provideTasks(handle: number, token?: CancellationToken): Promise<TaskDto[] | undefined>;
+    $resolveTask(handle: number, task: TaskDto, token?: CancellationToken): Promise<TaskDto | undefined>;
     $onDidStartTask(execution: TaskExecutionDto): void;
     $onDidEndTask(id: number): void;
 }

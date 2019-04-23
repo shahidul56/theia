@@ -78,14 +78,18 @@ is not optimized for dense, information rich UIs.
   --theia-terminal-font-family: monospace;
   --theia-ui-padding: 6px;
 
+  /* Tab Icon Colors */
+  --theia-tab-icon-color: var(--theia-ui-font-color1);
+  --theia-tab-font-color: #000;
+
   /* Main layout colors (bright to dark)
     ------------------------------------ */
 
   --theia-layout-color0: #ffffff;
-  --theia-layout-color1: var(--md-grey-100);
-  --theia-layout-color2: var(--md-grey-200);
-  --theia-layout-color3: var(--md-grey-300);
-  --theia-layout-color4: var(--md-grey-400);
+  --theia-layout-color1: #f3f3f3;
+  --theia-layout-color2: #ececec;
+  --theia-layout-color3: #dcdcdc;
+  --theia-layout-color4: #dcdcdc;
 
   /* Brand colors */
 
@@ -181,9 +185,11 @@ is not optimized for dense, information rich UIs.
   --theia-icon-replace: url(../icons/replace.svg);
   --theia-icon-replace-all: url(../icons/replace-all.svg);
   --theia-icon-open-file: url(../icons/open-file-bright.svg);
+  --theia-icon-open-change: url(../icons/open-change-bright.svg);
+  --theia-icon-preview: url(../icons/preview-bright.svg);
 
   /* Scrollbars */
-  --theia-scrollbar-width: 6px;
+  --theia-scrollbar-width: 10px;
   --theia-scrollbar-rail-width: 10px;
   --theia-scrollbar-thumb-color: hsla(0,0%,61%,.4);
   --theia-scrollbar-rail-color: transparent;
@@ -191,7 +197,7 @@ is not optimized for dense, information rich UIs.
   --theia-scrollbar-active-rail-color: transparent;
 
   /* Menu */
-  --theia-menu-color0: var(--theia-layout-color2);
+  --theia-menu-color0: var(--theia-layout-color3);
   --theia-menu-color1: var(--theia-layout-color0);
   --theia-menu-color2: var(--theia-layout-color3);
 

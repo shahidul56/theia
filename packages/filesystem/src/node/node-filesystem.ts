@@ -18,6 +18,7 @@ import * as mv from 'mv';
 import * as trash from 'trash';
 import * as paths from 'path';
 import * as fs from 'fs-extra';
+import { v4 } from 'uuid';
 import * as os from 'os';
 import * as touch from 'touch';
 import * as drivelist from 'drivelist';
@@ -157,6 +158,9 @@ export class FileSystemNode implements FileSystem {
     }
 
     async move(sourceUri: string, targetUri: string, options?: FileMoveOptions): Promise<FileStat> {
+        if (this.client) {
+            this.client.onWillMove(sourceUri, targetUri);
+        }
         const result = await this.doMove(sourceUri, targetUri, options);
         if (this.client) {
             this.client.onDidMove(sourceUri, targetUri);
@@ -226,6 +230,9 @@ export class FileSystemNode implements FileSystem {
         }
         if (targetStat && !overwrite) {
             throw FileSystemError.FileExists(targetUri, "Did you set the 'overwrite' flag to true?");
+        }
+        if (targetStat && targetStat.uri === sourceStat.uri) {
+            throw FileSystemError.FileExists(targetUri, 'Cannot perform copy, source and destination are the same.');
         }
         await fs.copy(FileUri.fsPath(_sourceUri), FileUri.fsPath(_targetUri), { overwrite, recursive });
         const newStat = await this.doGetStat(_targetUri, 1);
@@ -303,7 +310,24 @@ export class FileSystemNode implements FileSystem {
         if (moveToTrash) {
             return trash([FileUri.fsPath(_uri)]);
         } else {
-            return fs.remove(FileUri.fsPath(_uri));
+            const filePath = FileUri.fsPath(_uri);
+            const outputRootPath = paths.join(os.tmpdir(), v4());
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    fs.rename(filePath, outputRootPath, async error => {
+                        if (error) {
+                            return reject(error);
+                        }
+                        resolve();
+                    });
+                });
+                // There is no reason for the promise returned by this function not to resolve
+                // as soon as the move is complete.  Clearing up the temporary files can be
+                // done in the background.
+                fs.remove(FileUri.fsPath(outputRootPath));
+            } catch (error) {
+                return fs.remove(filePath);
+            }
         }
     }
 

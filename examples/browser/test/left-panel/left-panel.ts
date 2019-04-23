@@ -31,7 +31,7 @@ export class LeftPanel {
     }
 
     openCloseTab(tabName: string) {
-        this.driver.element('.p-TabBar.theia-app-left .p-TabBar-content').click(`div=${tabName}`);
+        this.driver.element('.p-TabBar.theia-app-left .p-TabBar-content').element(`div=${tabName}`).click('..');
         // Wait for animations to finish
         this.driver.pause(300);
     }
@@ -85,16 +85,6 @@ export class LeftPanel {
 
     waitForGitViewVisible(): void {
         this.driver.waitForVisible('#theia-gitContainer');
-        // Wait for animations to finish
-        this.driver.pause(300);
-    }
-
-    isExtensionsContainerVisible(): boolean {
-        return this.driver.isExisting('#extensions') && (this.driver.element('#extensions').getAttribute('class').split(' ').indexOf('theia-extensions') !== -1);
-    }
-
-    waitForExtensionsViewVisible(): void {
-        this.driver.waitForVisible('#extensions');
         // Wait for animations to finish
         this.driver.pause(300);
     }
